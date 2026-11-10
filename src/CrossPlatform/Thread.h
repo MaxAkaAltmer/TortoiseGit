@@ -29,6 +29,10 @@
 #include <queue>
 #include <cassert>
 
+// DWORD type alias for API compatibility
+using DWORD = unsigned long;
+constexpr DWORD INFINITE = 0xFFFFFFFF;
+
 // Cross-platform critical section / mutex
 // Replaces MFC CCriticalSection / ATL CCritSec
 class CCriticalSection
@@ -149,13 +153,18 @@ public:
     int Run();
 
 private:
+#ifdef _WIN32
     static unsigned int __stdcall ThreadProc(void* pData);
+#else
+    static unsigned int ThreadProc(void* pData);
+#endif
     int InternalRun(ThreadFunc func, void* pData);
 
     ThreadFunc m_func;
     void* m_data;
     std::thread m_thread;
     bool m_running;
+    void* m_handle = nullptr;
 };
 
 // Waitable event / condition variable wrapper
@@ -187,7 +196,7 @@ public:
     void Set(const T& value) { m_tls = value; }
 
 private:
-    thread_local static T m_tls;
+    thread_local T m_tls;
 };
 
 // Inline functions
@@ -279,10 +288,6 @@ inline bool CWaitableEvent::Wait(DWORD dwMilliseconds)
     }
     return true;
 }
-
-// DWORD type alias for API compatibility
-using DWORD = unsigned long;
-constexpr DWORD INFINITE = 0xFFFFFFFF;
 
 // Simple thread pool for job scheduling
 class CThreadPool

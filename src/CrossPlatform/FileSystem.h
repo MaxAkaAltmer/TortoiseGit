@@ -23,7 +23,10 @@
 #include <fstream>
 #include <algorithm>
 #include <functional>
+#include <map>
 #include <system_error>
+
+using DWORD = unsigned long;
 
 namespace CFileSystem
 {
