@@ -4,15 +4,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <regex>
 
 #ifdef _WIN32
 #include <windows.h>
 #include <shlwapi.h>
-#include <wchar.h>
 #else
 #include <unistd.h>
-#include <pwd.h>
 #include <dirent.h>
 #include <sys/inotify.h>
 #include <sys/stat.h>
@@ -119,7 +116,7 @@ namespace CFileSystem
 #ifdef _WIN32
         wchar_t buf[MAX_PATH];
         if (GetTempPathW(MAX_PATH, buf))
-            return std::filesystem::path(buf);
+            return buf;
         return std::filesystem::temp_directory_path();
 #else
         const char* temp = getenv("TMPDIR");
@@ -163,18 +160,15 @@ namespace CFileSystem
         std::ifstream file(path, std::ios::binary);
         if (!file.is_open())
             return false;
-        // Read as binary and convert from UTF-8
         std::string str;
         if (!ReadFileToString(path, str))
             return false;
-        // Simple UTF-8 to wide conversion (use ICU in production)
         content.assign(str.begin(), str.end());
         return true;
     }
 
     bool WriteWStringToFile(const std::filesystem::path& path, const std::wstring& content, bool append)
     {
-        // Convert wide to UTF-8
         std::string utf8(content.begin(), content.end());
         return WriteStringToFile(path, utf8, append);
     }
@@ -220,10 +214,7 @@ namespace CFileSystem
             if (callback(entry, 0))
                 return true;
             if (recursive && entry.is_directory())
-            {
-                // TODO: add depth limit
                 EnumerateDirectory(entry.path(), callback, true);
-            }
         }
         return true;
     }
@@ -234,21 +225,10 @@ namespace CFileSystem
         std::error_code ec;
         if (!std::filesystem::is_directory(dirPath, ec))
             return result;
-
         for (auto& entry : std::filesystem::directory_iterator(dirPath, ec))
         {
             if (entry.is_regular_file())
-            {
-#ifdef _WIN32
-                // On Windows, pattern matching is different
                 result.push_back(entry.path());
-#else
-                // Simple wildcard matching
-                std::string filename = entry.path().filename().string();
-                // TODO: Implement proper glob matching
-                result.push_back(entry.path());
-#endif
-            }
         }
         return result;
     }
@@ -259,7 +239,6 @@ namespace CFileSystem
         std::error_code ec;
         if (!std::filesystem::is_directory(dirPath, ec))
             return result;
-
         for (auto& entry : std::filesystem::directory_iterator(dirPath, ec))
         {
             if (entry.is_directory())
@@ -279,7 +258,6 @@ namespace CFileSystem
         auto pa = a.lexically_normal();
         auto pb = b.lexically_normal();
 #ifdef _WIN32
-        // Case-insensitive on Windows
         std::string la = pa.string();
         std::string lb = pb.string();
         std::transform(la.begin(), la.end(), la.begin(), ::tolower);
@@ -310,12 +288,11 @@ namespace CFileSystem
         wchar_t buf[MAX_PATH];
         if (SHGetFolderPathW(nullptr, CSIDL_PROFILE, nullptr, SHGFP_TYPE_CURRENT, buf) == S_OK)
             return buf;
-        return L"C:\\Users\\Default";
+        return "C:\\Users\\Default";
 #else
         const char* home = getenv("HOME");
         if (home && *home)
             return home;
-        // Fallback: get current user's home from /etc/passwd
         struct passwd* pw = getpwuid(getuid());
         if (pw)
             return pw->pw_dir;
@@ -329,7 +306,7 @@ namespace CFileSystem
         wchar_t buf[MAX_PATH];
         if (SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, buf) == S_OK)
             return buf;
-        return L"C:\\Users\\Default\\AppData\\Roaming";
+        return "C:\\Users\\Default\\AppData\\Roaming";
 #else
         const char* xdg = getenv("XDG_CONFIG_HOME");
         if (xdg && *xdg)
@@ -344,7 +321,7 @@ namespace CFileSystem
         wchar_t buf[MAX_PATH];
         if (SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, buf) == S_OK)
             return buf;
-        return L"C:\\Users\\Default\\AppData\\Local";
+        return "C:\\Users\\Default\\AppData\\Local";
 #else
         const char* xdg = getenv("XDG_DATA_HOME");
         if (xdg && *xdg)
@@ -361,9 +338,7 @@ namespace CFileSystem
     std::filesystem::path CreateTempFile(const std::string& prefix, const std::string& suffix)
     {
         auto tmpDir = GetTempDirectory();
-        auto tempPath = tmpDir / (prefix + "XXXXXX" + suffix);
-        // Use mkstemp-like approach
-        std::string template_ = tempPath.string();
+        std::string template_ = tmpDir.string() + "/" + prefix + "XXXXXX" + suffix;
 #ifdef _WIN32
         wchar_t wtemp[MAX_PATH];
         MultiByteToWideChar(CP_UTF8, 0, template_.c_str(), -1, wtemp, MAX_PATH);
@@ -373,7 +348,7 @@ namespace CFileSystem
         WideCharToMultiByte(CP_UTF8, 0, wtemp, -1, result, MAX_PATH, nullptr, nullptr);
         return result;
 #else
-        char* result = mkstemp(&template_[0]);
+        char* result = mkstemps(&template_[0], static_cast<int>(suffix.size()));
         if (result)
         {
             close(fileno(fopen(template_.c_str(), "r")));
@@ -394,7 +369,7 @@ namespace CFileSystem
     {
         std::error_code ec;
         auto perms = std::filesystem::status(path, ec).permissions();
-        return (perms & std::filesystem::perms::owner_read) == std::filesystem::perms::owner_read &&
+        return (perms & std::filesystem::perms::owner_read) != std::filesystem::perms::none &&
                (perms & std::filesystem::perms::owner_write) == std::filesystem::perms::none;
     }
 
@@ -447,15 +422,7 @@ namespace CFileSystem
     bool CreateSymlink(const std::filesystem::path& target, const std::filesystem::path& symlink)
     {
         std::error_code ec;
-#ifdef _WIN32
-        // Windows requires special handling for symlinks
-        if (std::filesystem::is_directory(target))
-            std::filesystem::create_directory_symlink(target, symlink, ec);
-        else
-            std::filesystem::create_symlink(target, symlink, ec);
-#else
         std::filesystem::create_symlink(target, symlink, ec);
-#endif
         return !ec;
     }
 
@@ -504,7 +471,6 @@ namespace CFileSystem
     {
         while (m_running)
         {
-            // Snapshot current directory state
             std::map<std::filesystem::path, std::time_t> currentState;
             std::error_code ec;
             if (std::filesystem::is_directory(m_watchDir))
@@ -519,7 +485,6 @@ namespace CFileSystem
                 }
             }
 
-            // Compare with last state
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 for (auto& [path, ts] : currentState)
@@ -527,18 +492,15 @@ namespace CFileSystem
                     auto it = m_lastState.find(path);
                     if (it == m_lastState.end())
                     {
-                        // File added
                         if (m_callback) m_callback(path, Added);
                     }
                     else if (it->second != ts)
                     {
-                        // File modified
                         if (m_callback) m_callback(path, Modified);
                         it->second = ts;
                     }
                 }
-                // Check for removed files
-                for (auto it = m_lastState.begin(); it != m_lastState.end();)
+                for (auto it = m_lastState.begin(); it != m_lastState.end(); )
                 {
                     if (currentState.find(it->first) == currentState.end())
                     {

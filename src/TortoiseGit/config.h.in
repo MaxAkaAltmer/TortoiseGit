@@ -1,0 +1,16 @@
+#pragma once
+
+// Platform detection
+#cmakedefine _WIN32
+#cmakedefine _LINUX_
+#cmakedefine __APPLE__
+
+// Qt version
+#define QT_VERSION_MAJOR @Qt6_VERSION_MAJOR@
+#define QT_VERSION_MINOR @Qt6_VERSION_MINOR@
+
+// Build type
+#define BUILD_TYPE "@CMAKE_BUILD_TYPE@"
+
+// Application version
+#define APP_VERSION "@PROJECT_VERSION@"

@@ -1,22 +1,13 @@
 #include "Logging.h"
-#include "Path.h"
 
-#include <iostream>
-#include <fstream>
-#include <mutex>
 #include <sstream>
 #include <chrono>
-#include <cstdarg>
-#include <cstring>
+#include <iomanip>
+#include <fstream>
+#include <mutex>
 
 #ifdef _WIN32
 #include <windows.h>
-#include <shlwapi.h>
-#include <atlstr.h>
-#else
-#include <unistd.h>
-#include <syslog.h>
-#include <pthread.h>
 #endif
 
 // Static member initialization
@@ -54,9 +45,7 @@ void CLogging::Init(const std::string& appName, const std::string& logDir)
             // Linux: XDG_DATA_HOME/TortoiseGit/logs
             const char* xdg = getenv("XDG_DATA_HOME");
             if (xdg && *xdg)
-            {
                 logPath = xdg;
-            }
             else
             {
                 const char* home = getenv("HOME");
@@ -69,13 +58,11 @@ void CLogging::Init(const std::string& appName, const std::string& logDir)
         }
 
         // Create log subdirectory
-        CPath::MakeSureDirectoryPathExists(logPath);
-        s_logFilePath = logPath + "/TortoiseGit/logs/debug.log";
+        logPath += "/" + appName + "/logs";
+        s_logFilePath = logPath + "/debug.log";
+        s_initialized = true;
 
-        // Create log directory if needed
-        CPath::MakeSureDirectoryPathExists(CPath::GetParentPath(s_logFilePath));
-
-        LogMessage(LogLevel::Info, "Logging initialized");
+        LOG_INFO("Logging initialized");
     });
 }
 
@@ -169,6 +156,43 @@ CLogging::LogLevel CLogging::GetMinLevel()
 
 void CLogging::Shutdown()
 {
-    LogMessage(LogLevel::Info, "Logging shutting down");
+    LOG_INFO("Logging shutting down");
     s_initialized = false;
+}
+
+void CLogging::LogEntry(LogLevel level, const std::string& message,
+                       const char* file, int line, const char* func)
+{
+    if (!s_initialized || level < s_minLevel)
+        return;
+
+    std::string locInfo;
+    if (file && line > 0)
+    {
+        auto fileName = std::filesystem::path(file).filename().string();
+        std::ostringstream oss;
+        oss << fileName << ":" << line;
+        if (func)
+            oss << " [" << func << "]";
+        locInfo = oss.str();
+    }
+
+    if (!locInfo.empty())
+    {
+        LogMessage(level, "[" + locInfo + "] " + message);
+    }
+    else
+    {
+        LogMessage(level, message);
+    }
+}
+
+std::ostream& CLogging::GetLogStream(LogLevel level)
+{
+    static std::ostringstream stream;
+    if (s_initialized && level >= s_minLevel)
+    {
+        LogMessage(level, "");  // Log header
+    }
+    return stream;
 }
