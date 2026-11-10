@@ -26,7 +26,11 @@
 #include <map>
 #include <system_error>
 
+#ifdef _WIN32
+#include <windef.h>
+#else
 using DWORD = unsigned long;
+#endif
 
 namespace CFileSystem
 {

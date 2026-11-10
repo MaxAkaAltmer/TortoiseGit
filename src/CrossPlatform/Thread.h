@@ -135,7 +135,7 @@ public:
 
     // Start a thread. Returns false on failure.
     bool Create(ThreadFunc func, void* pData = nullptr,
-                DWORD dwCreateFlags = 0, DWORD dwStackSize = 0);
+                DWORD dwCreateFlags = 0, DWORD dwStackSize = 0) noexcept;
 
     // Wait for thread to finish
     void WaitForFinish(DWORD dwMilliseconds = INFINITE);
@@ -293,7 +293,7 @@ inline bool CWaitableEvent::Wait(DWORD dwMilliseconds)
 class CThreadPool
 {
 public:
-    static CThreadPool& Instance();
+    static inline CThreadPool& Instance();
     void PostTask(std::function<void()> task);
     void PostTaskDelayed(std::function<void()> task, DWORD milliseconds);
     void Shutdown();
