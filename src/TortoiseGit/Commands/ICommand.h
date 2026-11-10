@@ -4,6 +4,7 @@
 #include <memory>
 #include <functional>
 #include <map>
+#include <mutex>
 
 // Abstract command interface for TortoiseGit command pattern
 class ICommand
@@ -52,31 +53,62 @@ class CommandFactory
 public:
     using CreatorFunc = std::function<std::unique_ptr<ICommand>()>;
 
-    static CommandFactory& Instance();
+    // Thread-safe singleton
+    static CommandFactory& Instance()
+    {
+        static CommandFactory instance;
+        return instance;
+    }
 
-    bool Register(const std::string& name, CreatorFunc creator);
-    std::unique_ptr<ICommand> Create(const std::string& name);
-    bool Has(const std::string& name) const;
-    std::vector<std::string> GetRegisteredCommands() const;
+    bool Register(const std::string& name, CreatorFunc creator)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_creators.emplace(name, std::move(creator)).second;
+    }
+
+    std::unique_ptr<ICommand> Create(const std::string& name)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto it = m_creators.find(name);
+        if (it != m_creators.end())
+            return it->second();
+        return nullptr;
+    }
+
+    bool Has(const std::string& name) const
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_creators.find(name) != m_creators.end();
+    }
+
+    std::vector<std::string> GetRegisteredCommands() const
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        std::vector<std::string> result;
+        result.reserve(m_creators.size());
+        for (const auto& [key, _] : m_creators)
+            result.push_back(key);
+        return result;
+    }
 
 private:
     CommandFactory() = default;
+    mutable std::mutex m_mutex;
     std::map<std::string, CreatorFunc> m_creators;
 };
 
-// Auto-registration helper
-template<typename T>
-class CommandRegistrar
+// Safe inline registration function (avoids ODR violations in headers)
+inline void RegisterCommand(const std::string& name, std::function<std::unique_ptr<ICommand>()> creator)
 {
-public:
-    CommandRegistrar(const std::string& name)
-    {
-        CommandFactory::Instance().Register(name, [](){
-            return std::make_unique<T>();
-        });
-    }
-};
+    CommandFactory::Instance().Register(name, std::move(creator));
+}
+
+template<typename T>
+inline void RegisterCommand(const std::string& name)
+{
+    RegisterCommand(name, []() { return std::make_unique<T>(); });
+}
 
 // Example usage:
 // class CommitCommand : public ICommand { ... };
-// static CommandRegistrar<CommitCommand> g_commitRegistrar("commit");
+// static auto g_commitRegistrar = []{ RegisterCommand<CommitCommand>("commit"); }();
