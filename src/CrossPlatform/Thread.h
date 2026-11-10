@@ -130,7 +130,7 @@ public:
     using ThreadHandle = std::thread;
 
     CThread() : m_thread(), m_handle(nullptr) {}
-    virtual ~CThread();
+    virtual ~CThread() { if (m_thread.joinable()) m_thread.join(); }
 
     CThread(const CThread&) = delete;
     CThread& operator=(const CThread&) = delete;
@@ -166,7 +166,9 @@ private:
     void* m_data;
     std::thread m_thread;
     bool m_running;
+#ifdef _WIN32
     void* m_handle = nullptr;
+#endif
 };
 
 // Waitable event / condition variable wrapper
@@ -296,9 +298,9 @@ class CThreadPool
 {
 public:
     static inline CThreadPool& Instance();
-    void PostTask(std::function<void()> task);
-    void PostTaskDelayed(std::function<void()> task, DWORD milliseconds);
-    void Shutdown();
+    inline void PostTask(std::function<void()> task);
+    inline void PostTaskDelayed(std::function<void()> task, DWORD milliseconds);
+    inline void Shutdown();
 
 private:
     CThreadPool(int numThreads = 4);
