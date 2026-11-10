@@ -39,3 +39,81 @@ bin
 obj
 enc_temp_folder
 .aider*
+# Build directories
+build/
+_build/
+out/
+bin/
+lib/
+obj/
+*.exe
+*.dll
+*.so
+*.a
+*.dylib
+
+# IDE files
+.vs/
+.vscode/
+*.suo
+*.user
+*.sdf
+*.ncb
+*.opensdf
+*.ipch
+*.vcxproj.*
+
+# CMake
+CMakeCache.txt
+cmake_install.cmake
+CPack*
+Makefile
+*.cmake
+CMakeFiles/
+confdefs.h
+
+# Qt
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+*.qrc
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Config
+config.status
+config.log
+config.h
+config.h.in
+
+# AppImage
+*.AppImage
+*.AppRun
+
+# Flatpak
+*.flatpak
+.flatpak-builder/
+
+# Distribution
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+*.7z
+
+# TortoiseGit specific
+tgit-*.tmp
+tgit_temp
