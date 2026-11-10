@@ -1,11 +1,11 @@
 #pragma once
-#include <string>
-#include <vector>
-#include <memory>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
+#include <string>
 #include <utility>
+#include <vector>
 
 // Abstract command interface for TortoiseGit command pattern
 class ICommand
