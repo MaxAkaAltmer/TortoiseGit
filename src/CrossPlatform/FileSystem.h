@@ -25,11 +25,16 @@
 #include <functional>
 #include <map>
 #include <system_error>
+#include <thread>
+#include <mutex>
+#include <atomic>
 
+#ifndef DWORD
 #ifdef _WIN32
 #include <windef.h>
 #else
 using DWORD = unsigned long;
+#endif
 #endif
 
 namespace CFileSystem

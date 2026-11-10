@@ -12,6 +12,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <shlwapi.h>
+#include <atlstr.h>
 #else
 #include <unistd.h>
 #include <syslog.h>

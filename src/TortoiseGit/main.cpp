@@ -21,6 +21,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QLoggingCategory>
+#include <QSharedMemory>
 #include <memory>
 
 #include "CrossPlatform/Path.h"
@@ -98,7 +99,7 @@ int main(int argc, char* argv[])
     }
 
     // Check for single instance
-    QSharedMemory sharedMem(APP_NAME);
+    QSharedMemory sharedMem(QString::fromUtf8(APP_NAME));
     if (sharedMem.isAttached())
     {
         // Already running - pass command to existing instance via D-Bus
