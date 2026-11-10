@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=TortoiseGit
+GenericName=Git GUI
+Comment=Linux GUI for Git - TortoiseGit
+Exec=tortoisegit %F
+Icon=tortoisegit
+Terminal=false
+Categories=VersionControl;Development;Utility;
+MimeType=application/x-git;
+StartupNotify=true
+Keywords=git;svn;version control;
