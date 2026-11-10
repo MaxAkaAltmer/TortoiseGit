@@ -30,7 +30,9 @@
 #include <cassert>
 
 // DWORD type alias for API compatibility
+#ifndef DWORD
 using DWORD = unsigned long;
+#endif
 constexpr DWORD INFINITE = 0xFFFFFFFF;
 
 // Cross-platform critical section / mutex

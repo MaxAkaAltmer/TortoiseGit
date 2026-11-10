@@ -52,8 +52,8 @@ int main(int argc, char* argv[])
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
     QApplication app(argc, argv);
-    app.setApplicationName(APP_NAME);
-    app.setApplicationVersion(APP_VERSION);
+    app.setApplicationName(QString::fromUtf8(APP_NAME));
+    app.setApplicationVersion(QString::fromUtf8(APP_VERSION));
     app.setOrganizationName("TortoiseGit");
     app.setOrganizationDomain("tortoisegit.org");
     app.setDesktopFileName("org.tortoisegit.TortoiseGit");
@@ -100,14 +100,13 @@ int main(int argc, char* argv[])
 
     // Check for single instance
     QSharedMemory sharedMem(QString::fromUtf8(APP_NAME));
-    if (sharedMem.isAttached())
+    if (!sharedMem.create(1))
     {
         // Already running - pass command to existing instance via D-Bus
         CLogging::LogMessage(CLogging::LogLevel::Info, "Another instance is running, forwarding to it");
         // TODO: Implement D-Bus forwarding to existing instance
         return 0;
     }
-    sharedMem.create(1);
 
     // TODO: Initialize shell extension cache connection (tgit-status-cache via D-Bus)
     // TODO: Parse arguments and dispatch to appropriate command handler
