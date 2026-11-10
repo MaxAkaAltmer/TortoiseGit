@@ -5,6 +5,7 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include <utility>
 
 // Abstract command interface for TortoiseGit command pattern
 class ICommand
