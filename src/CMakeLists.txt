@@ -29,7 +29,7 @@ if(Qt6_FOUND)
         PREFIX "/"
         FILES ""
     )
-    target_link_libraries(tortoisegqt PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
+    target_link_libraries(tortoisegit PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
 elseif(Qt5_FOUND)
     qt5_use_modules(tortoisegit Core Gui Widgets Network)
     target_link_libraries(tortoisegit PRIVATE Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network)
