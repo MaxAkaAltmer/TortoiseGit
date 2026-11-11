@@ -3,6 +3,10 @@
 # === TortoiseGit Main Application ===
 set(TGIT_SOURCES
     TortoiseGit/main.cpp
+    TortoiseGit/MainWindow.cpp
+    TortoiseGit/SettingsDialog.cpp
+    TortoiseGit/LogDialog.cpp
+    TortoiseGit/DiffDialog.cpp
     CrossPlatform/Path.cpp
     CrossPlatform/FileSystem.cpp
     CrossPlatform/Logging.cpp
@@ -10,6 +14,10 @@ set(TGIT_SOURCES
 
 set(TGIT_HEADERS
     TortoiseGit/main.h
+    TortoiseGit/MainWindow.h
+    TortoiseGit/SettingsDialog.h
+    TortoiseGit/LogDialog.h
+    TortoiseGit/DiffDialog.h
     CrossPlatform/Path.h
     CrossPlatform/ConfigStore.h
     CrossPlatform/Logging.h
