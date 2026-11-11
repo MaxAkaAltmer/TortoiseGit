@@ -1,5 +1,6 @@
 #pragma once
 #include <QDialog>
+#include <QWidget>
 
 class LogDialog : public QDialog {
 Q_OBJECT
