@@ -2,39 +2,40 @@
 
 #include <git2.h>
 
+#include <string>
+
+#include "GitCore/CredentialsInternal.h"
 #include "GitCore/GitCoreUtil.h"
 #include "GitCore/GitException.h"
 
 namespace GitCore
 {
-    namespace
-    {
-        int SidebandProgress(const char* text, int len, void* payload)
-        {
-            auto* progress = static_cast<std::function<void(const std::string&)>*>(payload);
-            if (progress && *progress && text && len > 0)
-                (*progress)(std::string(text, static_cast<std::size_t>(len)));
-            return 0;
-        }
-    }
-
     Repository Clone(const std::string& url, const std::string& localPath,
-                     const std::function<void(const std::string&)>& progress)
+                     const RemoteOptions& options)
     {
         detail::EnsureInit();
 
-        git_clone_options options = GIT_CLONE_OPTIONS_INIT;
-        if (progress)
-        {
-            options.fetch_opts.callbacks.sideband_progress = SidebandProgress;
-            options.fetch_opts.callbacks.payload =
-                const_cast<std::function<void(const std::string&)>*>(&progress);
-        }
+        // Fail early with a hint about the missing backend instead of letting
+        // libgit2 report an opaque "unsupported URL" error.
+        if (const std::string hint = MissingTransportHint(url); !hint.empty())
+            throw GitException("cannot clone '" + url + "': " + hint);
+
+        detail::RemoteCallbackPayload payload;
+        payload.progress                 = options.progress;
+        payload.credentials.provider     = options.credentials;
+
+        git_clone_options cloneOptions = detail::DefaultCloneOptions();
+        detail::InstallRemoteCallbacks(cloneOptions.fetch_opts.callbacks, payload);
 
         git_repository* raw = nullptr;
-        int res = git_clone(&raw, url.c_str(), localPath.c_str(), &options);
+        const int res = git_clone(&raw, url.c_str(), localPath.c_str(), &cloneOptions);
         if (res != 0)
-            GitException::Raise("cannot clone '" + url + "' into '" + localPath + "'", res);
+        {
+            std::string context = "cannot clone '" + url + "' into '" + localPath + "'";
+            if (!payload.credentials.errorText.empty())
+                context += ": " + payload.credentials.errorText;
+            GitException::Raise(context, res);
+        }
 
         return Repository::FromHandle(Repository::Handle(raw));
     }

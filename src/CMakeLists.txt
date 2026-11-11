@@ -116,6 +116,8 @@ add_library(gitcore STATIC
     GitCore/Branches.cpp
     GitCore/Diff.cpp
     GitCore/Clone.cpp
+    GitCore/Credentials.cpp
+    GitCore/Remote.cpp
 )
 target_include_directories(gitcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(gitcore PUBLIC tgit::libgit2)

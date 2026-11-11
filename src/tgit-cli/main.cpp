@@ -17,11 +17,18 @@
 #include <string>
 #include <vector>
 
+#ifndef _WIN32
+#    include <termios.h>
+#    include <unistd.h>
+#endif
+
 #include "GitCore/Branches.h"
 #include "GitCore/Clone.h"
+#include "GitCore/Credentials.h"
 #include "GitCore/Diff.h"
 #include "GitCore/GitException.h"
 #include "GitCore/Log.h"
+#include "GitCore/Remote.h"
 #include "GitCore/Repository.h"
 #include "GitCore/Status.h"
 
@@ -44,7 +51,13 @@ namespace
         bool bare = false;
         bool includeRemote = true;
         bool nameOnly = false;
-        std::vector<std::string> positional;
+        // Remote access (clone, fetch, push)
+        std::string remoteName = "origin";
+        std::string userName;
+        std::string password;
+        std::string sshKey;
+        std::string passphrase;
+        std::vector<std::string> positional; // refspecs for fetch/push
     };
 
     void PrintUsage()
@@ -61,6 +74,9 @@ namespace
             "  show [rev]                Show commit information (default: HEAD)\n"
             "  diff <rev1> [rev2] [file] Show changes between revisions\n"
             "  trust <path>              Add a repository to safe.directory\n"
+            "  remote                    List the configured remotes\n"
+            "  fetch [refspec...]        Fetch from a remote\n"
+            "  push [refspec...]         Push to a remote\n"
             "\n"
             "Options:\n"
             "  -C, --chdir <path>        Run as if started in <path> (default: .)\n"
@@ -72,6 +88,16 @@ namespace
             "      --name-only           List changed files instead of a patch (diff)\n"
             "      --no-remote           Do not list remote branches (branches)\n"
             "      --bare                Create a bare repository (init)\n"
+            "\n"
+            "Remote options (clone, fetch, push):\n"
+            "      --remote <name>       Remote to use (default: origin)\n"
+            "      --username <name>     User name for the remote\n"
+            "      --password <secret>   Password or access token (https)\n"
+            "      --ssh-key <file>      Private key file (ssh)\n"
+            "      --passphrase <secret> Passphrase of the private key\n"
+            "Without these options an interactive terminal asks for what the\n"
+            "remote requires; ssh-agent and credential helpers are used first.\n"
+            "\n"
             "  -h, --help                Show this help\n";
     }
 
@@ -128,6 +154,96 @@ namespace
         return ExitOk;
     }
 
+    bool InteractiveTerminal()
+    {
+#ifndef _WIN32
+        return isatty(STDIN_FILENO) != 0;
+#else
+        return false;
+#endif
+    }
+
+    // Reads one line from the terminal. With echo disabled the typed text
+    // stays hidden, which matters for passphrases and access tokens.
+    bool PromptLine(const std::string& prompt, bool echo, std::string& value)
+    {
+        std::cerr << prompt << std::flush;
+#ifndef _WIN32
+        if (echo || !isatty(STDIN_FILENO))
+            return static_cast<bool>(std::getline(std::cin, value));
+
+        struct termios original;
+        if (tcgetattr(STDIN_FILENO, &original) != 0)
+            return static_cast<bool>(std::getline(std::cin, value));
+
+        struct termios hidden = original;
+        hidden.c_lflag &= ~static_cast<tcflag_t>(ECHO);
+        std::getline(std::cin, value);
+        const bool read = !std::cin.fail();
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &original);
+        std::cerr << '\n' << std::flush;
+        return read;
+#else
+        (void)echo;
+        return static_cast<bool>(std::getline(std::cin, value));
+#endif
+    }
+
+    // Builds the credentials provider from the command line. Without any
+    // credential option an interactive terminal is asked for what the remote
+    // requires; in a non-interactive run the answers stay empty so that
+    // ssh-agent and the credential helpers keep working.
+    GitCore::CredentialProvider MakeCredentialProvider(const Options& opt)
+    {
+        const Options settings = opt;
+        return [settings](const GitCore::CredentialRequest& request, GitCore::Credential& credential) {
+            const std::string userName =
+                !settings.userName.empty() ? settings.userName : request.userName;
+
+            if (!settings.sshKey.empty() && request.allowsSshKey)
+            {
+                credential = GitCore::Credential::FromSshKey(userName, settings.sshKey,
+                                                             settings.passphrase);
+                return true;
+            }
+            if (!settings.password.empty() && request.allowsUsernamePassword)
+            {
+                credential = GitCore::Credential::FromUserPassword(userName, settings.password);
+                return true;
+            }
+            if (!settings.userName.empty() || !settings.password.empty() || !settings.sshKey.empty())
+                return false; // the remote wants something else than what was given
+
+            if (request.allowsAgent)
+            {
+                credential = GitCore::Credential::FromAgent(userName);
+                return true;
+            }
+            if (!request.allowsUsernamePassword || !InteractiveTerminal())
+                return false;
+
+            std::string askedUser = userName;
+            if (askedUser.empty() &&
+                !PromptLine("Username for '" + request.url + "': ", true, askedUser))
+                return false;
+            std::string secret;
+            if (!PromptLine("Password or token for '" + askedUser + "': ", false, secret))
+                return false;
+
+            credential = GitCore::Credential::FromUserPassword(askedUser, secret);
+            return true;
+        };
+    }
+
+    GitCore::RemoteOptions MakeRemoteOptions(const Options& opt)
+    {
+        GitCore::RemoteOptions options;
+        options.progress    = [](const std::string& line) { std::cerr << line; };
+        options.remoteName  = opt.remoteName;
+        options.credentials = MakeCredentialProvider(opt);
+        return options;
+    }
+
     int CmdClone(const Options& opt)
     {
         if (opt.positional.size() < 2)
@@ -135,10 +251,54 @@ namespace
             std::cerr << "error: clone requires <url> and <path>\n";
             return ExitUsage;
         }
-        GitCore::Repository repo = GitCore::Clone(
-            opt.positional[0], opt.positional[1],
-            [](const std::string& progress) { std::cerr << progress; });
+        GitCore::Repository repo = GitCore::Clone(opt.positional[0], opt.positional[1],
+                                                  MakeRemoteOptions(opt));
         std::cout << "Cloned into " << repo.Info().workDir << '\n';
+        return ExitOk;
+    }
+
+    int CmdRemote(const Options& opt)
+    {
+        GitCore::Repository repo = GitCore::Repository::Open(opt.repoPath);
+        const auto remotes = GitCore::ListRemotes(repo);
+
+        if (opt.json)
+        {
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& remote : remotes)
+                arr.push_back({{"name", remote.name}, {"url", remote.url}, {"pushUrl", remote.pushUrl}});
+            std::cout << arr.dump(2) << '\n';
+            return ExitOk;
+        }
+
+        if (remotes.empty())
+        {
+            std::cout << "no remotes\n";
+            return ExitOk;
+        }
+        for (const auto& remote : remotes)
+        {
+            std::cout << remote.name << '\t' << remote.url;
+            if (!remote.pushUrl.empty() && remote.pushUrl != remote.url)
+                std::cout << "\tpush: " << remote.pushUrl;
+            std::cout << '\n';
+        }
+        return ExitOk;
+    }
+
+    int CmdFetch(const Options& opt)
+    {
+        GitCore::Repository repo = GitCore::Repository::Open(opt.repoPath);
+        GitCore::Fetch(repo, opt.positional, MakeRemoteOptions(opt));
+        std::cout << "Fetched from '" << opt.remoteName << "'\n";
+        return ExitOk;
+    }
+
+    int CmdPush(const Options& opt)
+    {
+        GitCore::Repository repo = GitCore::Repository::Open(opt.repoPath);
+        GitCore::Push(repo, opt.positional, MakeRemoteOptions(opt));
+        std::cout << "Pushed to '" << opt.remoteName << "'\n";
         return ExitOk;
     }
 
@@ -362,6 +522,41 @@ namespace
                 opt.json = true;
             else if (arg == "--bare")
                 opt.bare = true;
+            else if (arg == "--remote")
+            {
+                const char* v = nextValue(arg.c_str());
+                if (!v)
+                    return false;
+                opt.remoteName = v;
+            }
+            else if (arg == "--username")
+            {
+                const char* v = nextValue(arg.c_str());
+                if (!v)
+                    return false;
+                opt.userName = v;
+            }
+            else if (arg == "--password")
+            {
+                const char* v = nextValue(arg.c_str());
+                if (!v)
+                    return false;
+                opt.password = v;
+            }
+            else if (arg == "--ssh-key")
+            {
+                const char* v = nextValue(arg.c_str());
+                if (!v)
+                    return false;
+                opt.sshKey = v;
+            }
+            else if (arg == "--passphrase")
+            {
+                const char* v = nextValue(arg.c_str());
+                if (!v)
+                    return false;
+                opt.passphrase = v;
+            }
             else if (arg == "--no-remote")
                 opt.includeRemote = false;
             else if (arg == "--name-only")
@@ -426,6 +621,12 @@ int main(int argc, char* argv[])
             return CmdInit(opt);
         if (opt.command == "clone")
             return CmdClone(opt);
+        if (opt.command == "remote")
+            return CmdRemote(opt);
+        if (opt.command == "fetch")
+            return CmdFetch(opt);
+        if (opt.command == "push")
+            return CmdPush(opt);
         if (opt.command == "trust")
             return CmdTrust(opt);
         if (opt.command == "status")

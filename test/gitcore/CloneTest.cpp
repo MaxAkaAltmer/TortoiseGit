@@ -19,10 +19,9 @@ TEST(CloneTest, LocalPathClone)
     std::filesystem::remove_all(clonePath);
 
     std::vector<std::string> progressLines;
-    auto clone = GitCore::Clone(src.root.string(), clonePath.string(),
-                                [&](const std::string& line) {
-                                    progressLines.push_back(line);
-                                });
+    GitCore::RemoteOptions options;
+    options.progress = [&](const std::string& line) { progressLines.push_back(line); };
+    auto clone = GitCore::Clone(src.root.string(), clonePath.string(), options);
 
     EXPECT_FALSE(clone.Info().isBare);
     EXPECT_EQ(clone.HeadOid(), sourceHead);

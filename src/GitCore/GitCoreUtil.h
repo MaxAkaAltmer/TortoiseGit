@@ -8,6 +8,7 @@
 
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace GitCore
 {
@@ -119,6 +120,88 @@ namespace GitCore
             git_strarray m_array;
         };
 
+        // Keeps a list of strings (refspecs, pathsets) alive as a git_strarray.
+        // Returns nullptr from get() for an empty list, which libgit2 reads as
+        // "use the configured default".
+        class Strings
+        {
+        public:
+            explicit Strings(const std::vector<std::string>& values) : m_texts(values)
+            {
+                m_ptrs.resize(m_texts.size());
+                for (std::size_t i = 0; i < m_texts.size(); ++i)
+                    m_ptrs[i] = m_texts[i].data();
+                m_array.strings = m_ptrs.empty() ? nullptr : m_ptrs.data();
+                m_array.count   = static_cast<unsigned int>(m_ptrs.size());
+            }
+
+            Strings(const Strings&) = delete;
+            Strings& operator=(const Strings&) = delete;
+
+            const git_strarray* get() const { return m_array.count == 0 ? nullptr : &m_array; }
+            bool empty() const { return m_array.count == 0; }
+
+        private:
+            std::vector<std::string> m_texts;
+            std::vector<char*> m_ptrs;
+            git_strarray m_array;
+        };
+
+        // Owns the strings of a git_strarray that a function fills into a
+        // caller-allocated struct (git_remote_list and friends). The struct
+        // lives here, on the stack; git_strarray_free releases its contents.
+        class StrArrayContents
+        {
+        public:
+            StrArrayContents() { m_array.strings = nullptr; m_array.count = 0; }
+            ~StrArrayContents() { git_strarray_free(&m_array); }
+
+            StrArrayContents(const StrArrayContents&) = delete;
+            StrArrayContents& operator=(const StrArrayContents&) = delete;
+
+            git_strarray* releaseSlot() { return &m_array; }
+            std::size_t size() const { return m_array.count; }
+
+            std::string at(std::size_t index) const
+            {
+                if (!m_array.strings || index >= m_array.count || !m_array.strings[index])
+                    return {};
+                return m_array.strings[index];
+            }
+
+        private:
+            git_strarray m_array;
+        };
+
+        // libgit2's *_OPTIONS_INIT macros list only the leading members, which
+        // -Wextra reports as -Wmissing-field-initializers although the result
+        // is exactly what the library expects. Wrapping the initialization
+        // keeps that warning out of the calling code.
+#if defined(__GNUC__) || defined(__clang__)
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#endif
+        inline git_clone_options DefaultCloneOptions()
+        {
+            git_clone_options options = GIT_CLONE_OPTIONS_INIT;
+            return options;
+        }
+
+        inline git_fetch_options DefaultFetchOptions()
+        {
+            git_fetch_options options = GIT_FETCH_OPTIONS_INIT;
+            return options;
+        }
+
+        inline git_push_options DefaultPushOptions()
+        {
+            git_push_options options = GIT_PUSH_OPTIONS_INIT;
+            return options;
+        }
+#if defined(__GNUC__) || defined(__clang__)
+#    pragma GCC diagnostic pop
+#endif
+
         inline std::string TrimRight(std::string s)
         {
             while (!s.empty() && (s.back() == '\n' || s.back() == '\r'))
@@ -135,6 +218,7 @@ namespace GitCore
         using BranchEnumPtr = GitPtr<git_branch_iterator, git_branch_iterator_free>;
         using StatusListPtr = GitPtr<git_status_list, git_status_list_free>;
         using DiffPtr = GitPtr<git_diff, git_diff_free>;
-        using StrArrayPtr = GitPtr<git_strarray, git_strarray_free>;
+        using RemotePtr   = GitPtr<git_remote, git_remote_free>;
+        using BufPtr      = GitPtr<git_buf, git_buf_dispose>;
     }
 }
