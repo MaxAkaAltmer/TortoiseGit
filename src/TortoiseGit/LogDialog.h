@@ -2,7 +2,7 @@
 #include <QDialog>
 
 class LogDialog : public QDialog {
-Q_OBJECT
+    Q_OBJECT
 public:
     explicit LogDialog(QWidget *parent = nullptr);
 };

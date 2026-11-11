@@ -82,13 +82,15 @@ int main(int argc, char* argv[])
 
     // Check single instance
     QSharedMemory sharedMem(APP_NAME);
-    if (sharedMem.isAttached())
+    if (!sharedMem.create(1, QSharedMemory::ShareExclusive))
     {
-        CLogging::LogMessage(CLogging::LogLevel::Info, "Another instance is running");
-        // TODO: Forward command to existing instance via D-Bus
-        return 0;
+        if (sharedMem.error() == QSharedMemory::AlreadyExists)
+        {
+            CLogging::LogMessage(CLogging::LogLevel::Info, "Another instance is running");
+            // TODO: Forward command to existing instance via D-Bus
+            return 0;
+        }
     }
-    sharedMem.create(1);
 
     CLogging::LogMessage(CLogging::LogLevel::Info, "Main application initialized");
     return 0;
