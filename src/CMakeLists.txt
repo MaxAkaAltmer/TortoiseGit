@@ -11,6 +11,7 @@ set(CMAKE_AUTOMOC ON)
 set(TGIT_SOURCES
     TortoiseGit/main.cpp
     TortoiseGit/MainWindow.cpp
+    TortoiseGit/SingleInstance.cpp
     TortoiseGit/SettingsDialog.cpp
     TortoiseGit/LogDialog.cpp
     TortoiseGit/StatusDialog.cpp
@@ -24,6 +25,7 @@ set(TGIT_SOURCES
 
 set(TGIT_HEADERS
     TortoiseGit/MainWindow.h
+    TortoiseGit/SingleInstance.h
     TortoiseGit/SettingsDialog.h
     TortoiseGit/LogDialog.h
     TortoiseGit/StatusDialog.h
@@ -56,6 +58,15 @@ endif()
 
 # Phase 3: the GUI dialogs use the cross-platform git layer
 target_link_libraries(tortoisegit PRIVATE gitcore)
+
+# Optional: forward the command line of further instances over D-Bus
+if(Qt6DBus_FOUND)
+    target_link_libraries(tortoisegit PRIVATE Qt6::DBus)
+    target_compile_definitions(tortoisegit PRIVATE TGIT_HAVE_DBUS)
+elseif(Qt5DBus_FOUND)
+    target_link_libraries(tortoisegit PRIVATE Qt5::DBus)
+    target_compile_definitions(tortoisegit PRIVATE TGIT_HAVE_DBUS)
+endif()
 
 # Platform-specific linking
 if(WIN32)

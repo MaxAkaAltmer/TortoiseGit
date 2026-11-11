@@ -20,10 +20,7 @@
 #include <QCommandLineParser>
 #include <QCommandLineOption>
 #include <QDir>
-#include <QLockFile>
 #include <QLoggingCategory>
-#include <QFileInfo>
-#include <QStandardPaths>
 #include <memory>
 
 #include "CrossPlatform/Path.h"
@@ -31,10 +28,8 @@
 #include "CrossPlatform/ConfigStore.h"
 #include "CrossPlatform/FileSystem.h"
 
-#include "DiffDialog.h"
 #include "MainWindow.h"
-#include "LogDialog.h"
-#include "StatusDialog.h"
+#include "SingleInstance.h"
 
 static const char* APP_NAME = "TortoiseGit";
 static const char* APP_VERSION = "3.0.0";
@@ -84,25 +79,34 @@ int main(int argc, char* argv[])
     CConfig::LinuxConfigStore config(APP_NAME);
     config.Load();
 
-    // Check single instance. QLockFile stores the owner PID in the lock file
-    // and automatically breaks a stale lock left behind by a crashed or
-    // killed process - QSharedMemory would block all further starts.
-    QLockFile singleInstanceLock(
-        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
-            .filePath(QStringLiteral("tortoisegit-%1.lock").arg(QString::fromLatin1(APP_NAME))));
-    if (!singleInstanceLock.tryLock(100))
+    const QString action  = parser.value("action").trimmed().toLower();
+    const QString pathArg = parser.value("path");
+
+    // Single instance: the first process owns the D-Bus name of the application
+    // and keeps running, every further start hands its command line over to it
+    // and exits. Without a session bus only the "already running" case is
+    // detected, the command itself is dropped (see SingleInstance).
+    SingleInstance singleInstance(APP_NAME);
+    switch (singleInstance.Start({action, pathArg, parser.value("url"),
+                                  parser.value("revision")}))
     {
-        CLogging::LogMessage(CLogging::LogLevel::Info, "Another instance is running");
-        // TODO: Forward command to existing instance via D-Bus
+    case SingleInstance::Result::Forwarded:
+        CLogging::LogMessage(CLogging::LogLevel::Info, "Command forwarded to the running instance");
         return 0;
+    case SingleInstance::Result::Busy:
+        CLogging::LogMessage(CLogging::LogLevel::Info, "Another instance is running");
+        return 0;
+    case SingleInstance::Result::Primary:
+    case SingleInstance::Result::Unavailable:
+        break;
     }
 
     CLogging::LogMessage(CLogging::LogLevel::Info, "Main application initialized");
 
     MainWindow window;
-
-    const QString action = parser.value("action").trimmed().toLower();
-    const QString pathArg = parser.value("path");
+    // Commands of further instances open their dialogs in this window
+    QObject::connect(&singleInstance, &SingleInstance::CommandReceived,
+                     &window, &MainWindow::HandleCommand);
 
     if (!action.isEmpty())
     {
@@ -112,23 +116,7 @@ int main(int argc, char* argv[])
         if (!window.OpenRepository(repoPath))
             return 1;
 
-        const GitCore::Repository* repo = window.Repo();
-        if (action == QLatin1String("log"))
-        {
-            LogDialog dialog(repo);
-            dialog.exec();
-        }
-        else if (action == QLatin1String("status"))
-        {
-            StatusDialog dialog(repo);
-            dialog.exec();
-        }
-        else if (action == QLatin1String("diff"))
-        {
-            DiffDialog dialog(repo, QStringLiteral("HEAD"), QString());
-            dialog.exec();
-        }
-        else
+        if (!window.ExecAction(action, parser.value("revision")))
         {
             CLogging::LogMessage(CLogging::LogLevel::Warning,
                                  "Unknown action '" + action.toStdString() + "', starting GUI");

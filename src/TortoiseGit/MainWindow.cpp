@@ -19,6 +19,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QDialog>
 #include <QDir>
 #include <QFileDialog>
 #include <QLabel>
@@ -28,8 +29,10 @@
 #include <QStatusBar>
 #include <QStyle>
 #include <QToolBar>
+#include <memory>
 
 #include "AppSettings.h"
+#include "CrossPlatform/Logging.h"
 #include "DiffDialog.h"
 #include "GitCore/GitException.h"
 #include "LogDialog.h"
@@ -156,26 +159,77 @@ void MainWindow::ChooseAndOpenRepository()
 
 void MainWindow::ShowLogDialog()
 {
-    if (!Repo())
-        return;
-    LogDialog dialog(Repo(), this);
-    dialog.exec();
+    ExecAction(QStringLiteral("log"));
 }
 
 void MainWindow::ShowStatusDialog()
 {
-    if (!Repo())
-        return;
-    StatusDialog dialog(Repo(), this);
-    dialog.exec();
+    ExecAction(QStringLiteral("status"));
 }
 
 void MainWindow::ShowDiffDialog()
 {
+    ExecAction(QStringLiteral("diff"));
+}
+
+QDialog* MainWindow::CreateActionDialog(const QString& action, const QString& revision)
+{
     if (!Repo())
+        return nullptr;
+
+    if (action == QLatin1String("log"))
+        return new LogDialog(Repo(), this);
+    if (action == QLatin1String("status"))
+        return new StatusDialog(Repo(), this);
+    if (action == QLatin1String("diff"))
+    {
+        // HEAD is the default "from" side; an explicit --revision overrides it
+        const QString rev1 = revision.isEmpty() ? QStringLiteral("HEAD") : revision;
+        return new DiffDialog(Repo(), rev1, QString(), this);
+    }
+    return nullptr;
+}
+
+bool MainWindow::ExecAction(const QString& action, const QString& revision)
+{
+    std::unique_ptr<QDialog> dialog(CreateActionDialog(action, revision));
+    if (!dialog)
+        return false;
+    dialog->exec();
+    return true;
+}
+
+void MainWindow::HandleCommand(const QString& action, const QString& path,
+                               const QString& url, const QString& revision)
+{
+    CLogging::LogMessage(CLogging::LogLevel::Info,
+                         "Handling command '" + action.toStdString() + "' for path '" +
+                             path.toStdString() + "'");
+
+    if (!path.isEmpty() && !OpenRepository(path))
         return;
-    DiffDialog dialog(Repo(), QStringLiteral("HEAD"), QString(), this);
-    dialog.exec();
+
+    if (!url.isEmpty())
+        CLogging::LogMessage(CLogging::LogLevel::Debug,
+                             "No action uses a url yet, ignoring '" + url.toStdString() + "'");
+
+    show();
+    raise();
+    activateWindow();
+
+    if (action.isEmpty())
+        return;
+
+    QDialog* dialog = CreateActionDialog(action, revision);
+    if (!dialog)
+    {
+        CLogging::LogMessage(CLogging::LogLevel::Warning,
+                             "Unknown action '" + action.toStdString() + "'");
+        return;
+    }
+    // Commands from other instances open their dialog modelessly
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
 }
 
 void MainWindow::ShowSettingsDialog()

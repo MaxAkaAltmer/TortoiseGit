@@ -18,11 +18,13 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QString>
 #include <optional>
 
 #include "GitCore/Repository.h"
 
 class QAction;
+class QDialog;
 class QLabel;
 
 class MainWindow : public QMainWindow
@@ -40,6 +42,17 @@ public:
     // The repository opened in this window, nullptr when none is open.
     const GitCore::Repository* Repo() const;
 
+    // Runs the dialog belonging to `action` ("log", "status", "diff", ...)
+    // modally. Returns false for unknown actions - the caller then shows the
+    // main window instead. Used for the `--action` command line mode.
+    bool ExecAction(const QString& action, const QString& revision = QString());
+
+    // Handles a command forwarded by a second instance: opens `path` when it
+    // is given, brings the window to the front and shows the dialog of
+    // `action` non-modally. An empty `action` only activates the window.
+    void HandleCommand(const QString& action, const QString& path,
+                       const QString& url, const QString& revision);
+
 private slots:
     void ChooseAndOpenRepository();
     void ShowLogDialog();
@@ -50,6 +63,9 @@ private slots:
 
 private:
     void UpdateUiForRepo();
+    // Creates the owned dialog for `action` (parented to this window), or
+    // nullptr when the action is not implemented.
+    QDialog* CreateActionDialog(const QString& action, const QString& revision);
 
     std::optional<GitCore::Repository> m_repo;
     QLabel* m_hintLabel       = nullptr;

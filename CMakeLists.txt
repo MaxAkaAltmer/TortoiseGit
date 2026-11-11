@@ -34,6 +34,20 @@ if(NOT Qt6_FOUND)
     find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Network Concurrent)
 endif()
 
+# DBus is optional and only used for forwarding commands to the instance that
+# is already running (see src/TortoiseGit/SingleInstance.cpp). Without it a
+# second instance is still detected, but its command line cannot be passed on.
+if(Qt6_FOUND)
+    find_package(Qt6 COMPONENTS DBus QUIET)
+elseif(Qt5_FOUND)
+    find_package(Qt5 COMPONENTS DBus QUIET)
+endif()
+if(Qt6DBus_FOUND OR Qt5DBus_FOUND)
+    message(STATUS "Qt DBus module found: single-instance command forwarding enabled")
+else()
+    message(STATUS "Qt DBus module not found: second instances are detected but not forwarded")
+endif()
+
 # Find libgit2
 find_package(libgit2 QUIET)
 if(NOT libgit2_FOUND)
