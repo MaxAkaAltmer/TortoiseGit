@@ -28,9 +28,10 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Find Qt6 (or Qt5 as fallback)
-find_package(Qt6 COMPONENTS Core Gui Widgets Network REQUIRED)
+# Concurrent is used by the Phase 3 GUI dialogs to run gitcore calls off the UI thread
+find_package(Qt6 COMPONENTS Core Gui Widgets Network Concurrent REQUIRED)
 if(NOT Qt6_FOUND)
-    find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Network)
+    find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Network Concurrent)
 endif()
 
 # Find libgit2

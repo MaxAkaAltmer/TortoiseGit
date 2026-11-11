@@ -20,8 +20,8 @@
 #include <QCommandLineParser>
 #include <QCommandLineOption>
 #include <QDir>
+#include <QLockFile>
 #include <QLoggingCategory>
-#include <QSharedMemory>
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <memory>
@@ -31,8 +31,10 @@
 #include "CrossPlatform/ConfigStore.h"
 #include "CrossPlatform/FileSystem.h"
 
-// Forward declaration
-class MainWindow;
+#include "DiffDialog.h"
+#include "MainWindow.h"
+#include "LogDialog.h"
+#include "StatusDialog.h"
 
 static const char* APP_NAME = "TortoiseGit";
 static const char* APP_VERSION = "3.0.0";
@@ -42,12 +44,6 @@ int main(int argc, char* argv[])
     // Initialize cross-platform logging
     CLogging::Init(APP_NAME);
     CLogging::LogMessage(CLogging::LogLevel::Info, "TortoiseGit Linux starting up");
-
-    // Configure Qt logging
-    QLoggingCategory::setFilterRules("*.debug=true\n"
-                                     "*.info=true\n"
-                                     "*.warning=true\n"
-                                     "*.critical=false");
 
     // Enable High DPI scaling
     QApplication::setHighDpiScaleFactorRoundingPolicy(
@@ -77,23 +73,73 @@ int main(int argc, char* argv[])
 
     parser.process(app);
 
+    // Configure Qt logging: Qt's internal debug categories are only enabled
+    // with --debug/--verbose to keep the default stderr output clean.
+    if (parser.isSet("debug") || parser.isSet("verbose"))
+        QLoggingCategory::setFilterRules(QStringLiteral("*.debug=true"));
+    else
+        QLoggingCategory::setFilterRules(QStringLiteral("*.debug=false\n*.info=true"));
+
     // Initialize config store
     CConfig::LinuxConfigStore config(APP_NAME);
     config.Load();
 
-    // Check single instance
-    QSharedMemory sharedMem(APP_NAME);
-    // Qt6: the share-permissions parameter of create() was removed
-    if (!sharedMem.create(1))
+    // Check single instance. QLockFile stores the owner PID in the lock file
+    // and automatically breaks a stale lock left behind by a crashed or
+    // killed process - QSharedMemory would block all further starts.
+    QLockFile singleInstanceLock(
+        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+            .filePath(QStringLiteral("tortoisegit-%1.lock").arg(QString::fromLatin1(APP_NAME))));
+    if (!singleInstanceLock.tryLock(100))
     {
-        if (sharedMem.error() == QSharedMemory::AlreadyExists)
-        {
-            CLogging::LogMessage(CLogging::LogLevel::Info, "Another instance is running");
-            // TODO: Forward command to existing instance via D-Bus
-            return 0;
-        }
+        CLogging::LogMessage(CLogging::LogLevel::Info, "Another instance is running");
+        // TODO: Forward command to existing instance via D-Bus
+        return 0;
     }
 
     CLogging::LogMessage(CLogging::LogLevel::Info, "Main application initialized");
-    return 0;
+
+    MainWindow window;
+
+    const QString action = parser.value("action").trimmed().toLower();
+    const QString pathArg = parser.value("path");
+
+    if (!action.isEmpty())
+    {
+        // Dialog mode (TortoiseGit-style): open one dialog for the action
+        // on the repository found at --path (default: current directory).
+        const QString repoPath = pathArg.isEmpty() ? QDir::currentPath() : pathArg;
+        if (!window.OpenRepository(repoPath))
+            return 1;
+
+        const GitCore::Repository* repo = window.Repo();
+        if (action == QLatin1String("log"))
+        {
+            LogDialog dialog(repo);
+            dialog.exec();
+        }
+        else if (action == QLatin1String("status"))
+        {
+            StatusDialog dialog(repo);
+            dialog.exec();
+        }
+        else if (action == QLatin1String("diff"))
+        {
+            DiffDialog dialog(repo, QStringLiteral("HEAD"), QString());
+            dialog.exec();
+        }
+        else
+        {
+            CLogging::LogMessage(CLogging::LogLevel::Warning,
+                                 "Unknown action '" + action.toStdString() + "', starting GUI");
+            window.show();
+        }
+        return 0;
+    }
+
+    // Normal GUI mode: show the main window, optionally opening --path
+    if (!pathArg.isEmpty())
+        window.OpenRepository(pathArg);
+    window.show();
+    return app.exec();
 }

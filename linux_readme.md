@@ -1,8 +1,8 @@
 # TortoiseGit: сборка и запуск под Linux
 
-Инструкция для текущей стадии портирования (Phase 2 — git-слой `gitcore` на
-libgit2 и консольная утилита `tgit-cli` поверх инфраструктурного слоя Phase 1:
-CMake + Qt6, утилиты `CrossPlatform/`, каркас приложения).
+Инструкция для текущей стадии портирования (Phase 3 — GUI на Qt: главное окно
+и диалоги Log/Status/Diff поверх git-слоя `gitcore` на libgit2 и
+инфраструктурного слоя Phase 1: CMake + Qt6, утилиты `CrossPlatform/`).
 Актуальный статус — в конце документа.
 
 ## Требования
@@ -11,7 +11,7 @@ CMake + Qt6, утилиты `CrossPlatform/`, каркас приложения)
 |---|---|---|
 | GCC / Clang | C++20 (GCC ≥ 10 / Clang ≥ 12) | |
 | CMake | 3.16 | |
-| Qt6 (Core, Gui, Widgets, Network) | 6.2+ | Qt5 допускается как fallback, но не тестировался |
+| Qt6 (Core, Gui, Widgets, Network, Concurrent) | 6.2+ | Qt5 допускается как fallback, но не тестировался |
 
 Системный `libgit2` опционален: при его отсутствии собирается встроенный
 подмодуль `ext/libgit2` (рекомендуется — версия проверена для этого проекта).
@@ -56,12 +56,13 @@ git submodule update --init ext/libgit2 ext/googletest ext/json
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 
-# модульные тесты gitcore (25 тестов)
+# модульные тесты (25 gitcore + 4 ConfigStore)
 cd build && ctest
 ```
 
-Результат: `build/bin/tortoisegit` (каркас GUI), `build/bin/tgit-cli`
-(консольный доступ к git) и `build/bin/gitcore_tests` (тесты).
+Результат: `build/bin/tortoisegit` (GUI), `build/bin/tgit-cli`
+(консольный доступ к git), `build/bin/gitcore_tests` и
+`build/bin/configstore_tests` (тесты).
 
 Отключить сборку тестов: `cmake -S . -B build -DTGIT_BUILD_TESTS=OFF`.
 
@@ -92,7 +93,7 @@ QT_QPA_PLATFORM=offscreen ./build/bin/tortoisegit --version
 |---|---|
 | `-h, --help` | справка по опциям |
 | `-v, --version` | версия |
-| `-s, --action <action>` | действие (commit, log, diff и т.д.) |
+| `-s, --action <action>` | режим диалога: `log`, `status` или `diff` (см. «GUI») |
 | `-p, --path <path>` | целевой путь |
 | `-u, --url <url>` | URL для clone/push/pull |
 | `-r, --revision <revision>` | ревизия/коммит |
@@ -130,22 +131,52 @@ QT_QPA_PLATFORM=offscreen ./build/bin/tortoisegit --version
 ### Единственный экземпляр
 
 Повторный запуск завершается сразу (код 0): экземпляр определяется через
-`QSharedMemory` с ключом `TortoiseGit`. Передача команд работающему instance
-через D-Bus ещё не реализована.
+`QLockFile` (`/tmp/tortoisegit-TortoiseGit.lock`); «зависший» замок после
+падения или kill процесса снимается автоматически по PID. Передача команд
+работающему instance через D-Bus ещё не реализована.
+
+## GUI (Phase 3)
+
+`tortoisegit` без `--action` открывает главное окно:
+
+- `File → Open Repository...` (Ctrl+O) — выбор рабочей копии (подкаталог
+  репозитория тоже подходит — ищется ближайший родительский каталог);
+- `Git → Show Log` (Ctrl+L) — таблица коммитов (hash, дата, автор, сообщение)
+  с панелью деталей и выбором лимита; двойной клик по коммиту открывает его
+  diff относительно первого родителя;
+- `Git → Show Status` (Ctrl+T) — состояние рабочего дерева и список
+  локальных/удалённых веток;
+- `Git → Show Diff` (Ctrl+D) — список изменённых файлов и unified patch;
+  можно указать любые две ревизии, пустое поле `To:` означает рабочее дерево;
+- `Help → About`.
+
+Все обращения к git идут через `gitcore` из фонового потока (QtConcurrent) и
+не блокируют UI.
+
+Режим диалога (аналогичен CLI TortoiseGit под Windows):
+
+```bash
+./build/bin/tortoisegit --action log    --path ~/src/demo
+./build/bin/tortoisegit --action status --path ~/src/demo
+./build/bin/tortoisegit --action diff   --path ~/src/demo
+```
 
 ## Конфигурация и логи
 
 - **Конфигурация:** `$XDG_CONFIG_HOME/TortoiseGit/config.ini`
-  (по умолчанию `~/.config/TortoiseGit/config.ini`), формат INI.
+  (по умолчанию `~/.config/TortoiseGit/config.ini`), формат INI; секция
+  `[General]`: `LogLimit` (коммитов в Log, `0` — все), `DefaultRepoPath`
+  (стартовый каталог «Open Repository»). Редактируется в
+  `File → Settings...` (Ctrl+, / Ctrl+Shift+P).
 - **Логи:** `$XDG_DATA_HOME/TortoiseGit/logs/`
   (по умолчанию `~/.local/share/TortoiseGit/logs/`); до создания каталога логов
   вывод идёт только в stderr.
 
 ## Известные ограничения текущей стадии
 
-1. GUI не отображается: `main()` парсит командную строку и завершается;
-   `MainWindow`/диалоги собраны, но не подключены (Phase 3). GUI пока не
-   использует `gitcore` — интеграция Log/Status/Diff-диалогов впереди.
+1. Из диалогов реализованы Log, Status, Diff и Settings; commit, push/pull,
+   blame и разрешение конфликтов пока нет. Просмотр diff — простой
+   `QPlainTextEdit` (unified patch), Scintilla-вьюдер отложен.
 2. `install(DIRECTORY resources ...)` в корневом CMake защищён `if(EXISTS)`:
    без каталога `resources/` установка проходит, но ресурсов не устанавливает.
 3. Сетевые удалённые репозитории с авторизацией (`https`/`ssh`) не
@@ -181,8 +212,13 @@ QT_QPA_PLATFORM=offscreen ./build/bin/tortoisegit --version
 - [x] Phase 2 — Git-слой (libgit2), консольные утилиты: `gitcore`
       (repository/log/status/branches/diff/clone, safe.directory), `tgit-cli`,
       25 модульных тестов (ctest)
-- [ ] Отложено из Phase 2 (входит в Phase 3): авторизованные удалённые
-      репозитории (SSH/HTTPS), Scintilla, подключение gitcore к диалогам GUI
-- [ ] Phase 3 — GUI на Qt (Main window, диалоги)
+- [x] Phase 3 — GUI на Qt: главное окно (открытие/закрытие репозитория,
+      ветка в статус-баре), диалоги Log (история + детали + diff по двойному
+      клику), Status (рабочее дерево + ветки), Diff (список файлов +
+      unified patch), Settings; интеграция `gitcore` в GUI, фоновая загрузка
+      через QtConcurrent, INI-парсинг конфига (`CrossPlatform/ConfigStore`)
+- [ ] Осталось в Phase 3: авторизованные удалённые репозитории (SSH/HTTPS),
+      Scintilla-вьюдер diff, диалоги commit/push/pull, передача команд
+      через D-Bus
 - [ ] Phase 4 — интеграция с файловыми менеджерами (Nautilus/Dolphin)
 - [ ] Phase 5 — пакеты (AppImage, Flatpak, Deb)

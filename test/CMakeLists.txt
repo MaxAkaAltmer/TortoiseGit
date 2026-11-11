@@ -23,7 +23,16 @@ target_include_directories(gitcore_tests PRIVATE
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/testhome)
 
+# Phase 3: cross-platform infrastructure (CrossPlatform/) tests
+add_executable(configstore_tests
+    gitcore/ConfigStoreTest.cpp
+    ${CMAKE_SOURCE_DIR}/src/CrossPlatform/ConfigStore.cpp
+)
+target_link_libraries(configstore_tests PRIVATE GTest::gtest_main)
+target_include_directories(configstore_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
 include(GoogleTest)
 gtest_discover_tests(gitcore_tests
     PROPERTIES ENVIRONMENT "HOME=${CMAKE_CURRENT_BINARY_DIR}/testhome"
 )
+gtest_discover_tests(configstore_tests)

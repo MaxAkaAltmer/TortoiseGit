@@ -13,7 +13,9 @@ set(TGIT_SOURCES
     TortoiseGit/MainWindow.cpp
     TortoiseGit/SettingsDialog.cpp
     TortoiseGit/LogDialog.cpp
+    TortoiseGit/StatusDialog.cpp
     TortoiseGit/DiffDialog.cpp
+    TortoiseGit/AppSettings.cpp
     CrossPlatform/Path.cpp
     CrossPlatform/FileSystem.cpp
     CrossPlatform/Logging.cpp
@@ -24,7 +26,9 @@ set(TGIT_HEADERS
     TortoiseGit/MainWindow.h
     TortoiseGit/SettingsDialog.h
     TortoiseGit/LogDialog.h
+    TortoiseGit/StatusDialog.h
     TortoiseGit/DiffDialog.h
+    TortoiseGit/AppSettings.h
     CrossPlatform/Path.h
     CrossPlatform/ConfigStore.h
     CrossPlatform/Logging.h
@@ -44,11 +48,14 @@ if(Qt6_FOUND)
         PREFIX "/"
         FILES ""
     )
-    target_link_libraries(tortoisegit PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
+    target_link_libraries(tortoisegit PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Concurrent)
 elseif(Qt5_FOUND)
-    qt5_use_modules(tortoisegit Core Gui Widgets Network)
-    target_link_libraries(tortoisegit PRIVATE Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network)
+    qt5_use_modules(tortoisegit Core Gui Widgets Network Concurrent)
+    target_link_libraries(tortoisegit PRIVATE Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network Qt5::Concurrent)
 endif()
+
+# Phase 3: the GUI dialogs use the cross-platform git layer
+target_link_libraries(tortoisegit PRIVATE gitcore)
 
 # Platform-specific linking
 if(WIN32)

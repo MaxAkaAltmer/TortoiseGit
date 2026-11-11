@@ -140,11 +140,46 @@ namespace CConfig
     void ConfigValue::Set(const std::wstring& val) { m_type = ValueType::WString; m_wstr = val; }
 }
 
+namespace CConfig
+{
+    IConfigStore& IConfigStore::Section(const std::string& sectionName)
+    {
+        m_sectionStack.push_back(m_currentSection);
+        m_currentSection = m_currentSection.empty()
+                               ? sectionName
+                               : m_currentSection + "/" + sectionName;
+        return *this;
+    }
+
+    void IConfigStore::PopSection()
+    {
+        if (!m_sectionStack.empty())
+        {
+            m_currentSection = m_sectionStack.back();
+            m_sectionStack.pop_back();
+        }
+    }
+}
+
 // LinuxConfigStore implementation
 namespace CConfig
 {
+    namespace
+    {
+        std::string Trim(const std::string& s)
+        {
+            const char* ws = " \t\r\n";
+            auto begin = s.find_first_not_of(ws);
+            if (begin == std::string::npos)
+                return {};
+            auto end = s.find_last_not_of(ws);
+            return s.substr(begin, end - begin + 1);
+        }
+    }
+
     LinuxConfigStore::LinuxConfigStore(const std::string& appName)
         : m_appName(appName)
+        , m_configPath(GetDefaultConfigDir(appName) + "/config.ini")
     {
     }
 
@@ -170,20 +205,48 @@ namespace CConfig
     bool LinuxConfigStore::Load()
     {
         m_loaded = true;
-        // Parse INI-style config file
-        // TODO: Implement full INI parsing
+        m_sections.clear();
+
+        // Parse an INI-style config file: [section] headers, key=value pairs,
+        // '#' and ';' comments. A missing file is not an error - defaults apply.
+        std::ifstream file(m_configPath);
+        if (!file.is_open())
+            return true;
+
+        std::string line;
+        std::string section;
+        while (std::getline(file, line))
+        {
+            std::string trimmed = Trim(line);
+            if (trimmed.empty() || trimmed.front() == '#' || trimmed.front() == ';')
+                continue;
+            if (trimmed.front() == '[' && trimmed.back() == ']')
+            {
+                section = Trim(trimmed.substr(1, trimmed.size() - 2));
+                continue;
+            }
+            auto eq = trimmed.find('=');
+            if (eq == std::string::npos)
+                continue;
+            std::string key = Trim(trimmed.substr(0, eq));
+            if (key.empty())
+                continue;
+            ConfigValue value;
+            value.Set(Trim(trimmed.substr(eq + 1)));
+            m_sections[section][key] = value;
+        }
         return true;
     }
 
     bool LinuxConfigStore::Save()
     {
-        // Ensure config directory exists
-        auto configDir = GetDefaultConfigDir(m_appName);
-        // TODO: Create directory if not exists
+        // Create the config directory if it does not exist yet
+        std::error_code ec;
+        std::filesystem::create_directories(
+            std::filesystem::path(m_configPath).parent_path(), ec);
 
         // Write INI-style config
-        std::string configPath = configDir + "/config.ini";
-        std::ofstream file(configPath);
+        std::ofstream file(m_configPath);
         if (!file.is_open())
             return false;
 

@@ -92,6 +92,7 @@ namespace CConfig
     protected:
         IConfigStore() = default;
         std::string m_currentSection;
+        std::vector<std::string> m_sectionStack;
     };
 
     // Linux implementation: XDG INI-based config store
