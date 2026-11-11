@@ -2,7 +2,7 @@
 #include <QDialog>
 
 class DiffDialog : public QDialog {
-    Q_OBJECT
+Q_OBJECT
 public:
     explicit DiffDialog(QWidget *parent = nullptr);
 };
