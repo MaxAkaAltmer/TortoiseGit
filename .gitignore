@@ -68,7 +68,6 @@ CMakeCache.txt
 cmake_install.cmake
 CPack*
 Makefile
-*.cmake
 CMakeFiles/
 confdefs.h
 
