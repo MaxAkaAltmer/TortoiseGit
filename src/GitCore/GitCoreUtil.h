@@ -198,6 +198,12 @@ namespace GitCore
             git_push_options options = GIT_PUSH_OPTIONS_INIT;
             return options;
         }
+
+        inline git_checkout_options DefaultCheckoutOptions()
+        {
+            git_checkout_options options = GIT_CHECKOUT_OPTIONS_INIT;
+            return options;
+        }
 #if defined(__GNUC__) || defined(__clang__)
 #    pragma GCC diagnostic pop
 #endif
@@ -219,6 +225,8 @@ namespace GitCore
         using StatusListPtr = GitPtr<git_status_list, git_status_list_free>;
         using DiffPtr = GitPtr<git_diff, git_diff_free>;
         using RemotePtr   = GitPtr<git_remote, git_remote_free>;
+        using IndexPtr    = GitPtr<git_index, git_index_free>;
+        using SignaturePtr = GitPtr<git_signature, git_signature_free>;
         using BufPtr      = GitPtr<git_buf, git_buf_dispose>;
     }
 }

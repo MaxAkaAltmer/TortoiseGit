@@ -16,6 +16,7 @@ add_executable(gitcore_tests
     gitcore/DiffTest.cpp
     gitcore/CloneTest.cpp
     gitcore/RemoteTest.cpp
+    gitcore/CommitTest.cpp
 )
 target_link_libraries(gitcore_tests PRIVATE gitcore GTest::gtest_main)
 target_include_directories(gitcore_tests PRIVATE

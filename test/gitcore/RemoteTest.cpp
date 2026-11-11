@@ -47,6 +47,8 @@ namespace
         out << content;
     }
 
+
+
     // A bare repository that can receive pushes; its HEAD points at main so
     // that the pushed branch is the one gitcore reads back.
     class BareRemote
@@ -249,5 +251,234 @@ TEST(CredentialsTest, LocalRemoteDoesNotAskForCredentials)
 
     EXPECT_FALSE(asked);
     EXPECT_EQ(GitCore::LookupCommit(clone, "origin/main").summary, "second");
+    RemoveTree(target);
+}
+
+// --- Pull -----------------------------------------------------------------
+//
+// Pull is tested against a bare remote plus a second clone that publishes the
+// commits, so the local repository only ever sees them through the wire.
+
+namespace
+{
+    // Publishes one commit on main to the bare remote from a throw-away clone.
+    void Publish(const std::filesystem::path& remotePath, const std::string& name,
+                 const std::string& fileName, const std::string& message)
+    {
+        const std::filesystem::path workdir = TempPath(name);
+        RemoveTree(workdir);
+
+        auto publisher = GitCore::Clone(remotePath.string(), workdir.string());
+        WriteFile(workdir / fileName, message + "\n");
+        RunGit(workdir.string(), "add -A");
+        RunGit(workdir.string(), "commit -q -m '" + message + "'");
+        GitCore::Push(publisher, {"HEAD:refs/heads/main"});
+
+        RemoveTree(workdir);
+    }
+
+    // Commits a new file in an existing clone with the system git.
+    void CommitLocalFile(const std::filesystem::path& workdir, const std::string& fileName,
+                         const std::string& message)
+    {
+        WriteFile(workdir / fileName, message + "\n");
+        RunGit(workdir.string(), "add -A");
+        RunGit(workdir.string(), "commit -q -m '" + message + "'");
+    }
+
+    // Cloning an empty repository starts the clone on init.defaultBranch
+    // ("master"), because an unborn HEAD is not advertised by the remote and
+    // libgit2 therefore cannot learn which branch git would have used. The
+    // tests compare against main, so they name the branch the way
+    // `git init -b main` does.
+    void UseMainBranch(const std::filesystem::path& workdir)
+    {
+        RunGit(workdir.string(), "symbolic-ref HEAD refs/heads/main");
+    }
+}
+
+TEST(RemoteTest, PullFastForwardsBranchAndWorkingTree)
+{
+    BareRemote remote("remotepull");
+    const auto target = TempPath("remotepull_target");
+    RemoveTree(target);
+
+    auto clone = GitCore::Clone(remote.path.string(), target.string());
+    UseMainBranch(target);
+    CommitLocalFile(target, "a.txt", "first");
+    GitCore::Push(clone, {"HEAD:refs/heads/main"});
+
+    Publish(remote.path, "remotepull_publish", "b.txt", "second");
+
+    EXPECT_TRUE(GitCore::Pull(clone));
+
+    // Both the branch and the working tree moved to the remote commit.
+    GitCore::Repository reopened = GitCore::Repository::Open(target.string());
+    EXPECT_EQ(GitCore::LookupCommit(reopened, "HEAD").summary, "second");
+    EXPECT_EQ(GitCore::LookupCommit(reopened, "origin/main").summary, "second");
+    EXPECT_TRUE(std::filesystem::exists(target / "b.txt"));
+    RemoveTree(target);
+}
+
+TEST(RemoteTest, PullUpToDateBranchChangesNothing)
+{
+    BareRemote remote("remoteuptodate");
+    const auto target = TempPath("remoteuptodate_target");
+    RemoveTree(target);
+
+    auto clone = GitCore::Clone(remote.path.string(), target.string());
+    UseMainBranch(target);
+    CommitLocalFile(target, "a.txt", "only");
+    GitCore::Push(clone, {"HEAD:refs/heads/main"});
+
+    EXPECT_TRUE(GitCore::Pull(clone));
+
+    GitCore::Repository reopened = GitCore::Repository::Open(target.string());
+    EXPECT_EQ(GitCore::LookupCommit(reopened, "HEAD").summary, "only");
+
+    // Without a checked out branch there is nothing to integrate.
+    RunGit(target.string(), "checkout -q --detach HEAD");
+    GitCore::Repository detached = GitCore::Repository::Open(target.string());
+    EXPECT_THROW(GitCore::Pull(detached), GitCore::GitException);
+    RemoveTree(target);
+}
+
+TEST(RemoteTest, PullReportsDivergenceInsteadOfMerging)
+{
+    BareRemote remote("remotediverge");
+    const auto target = TempPath("remotediverge_target");
+    RemoveTree(target);
+
+    auto clone = GitCore::Clone(remote.path.string(), target.string());
+    UseMainBranch(target);
+    CommitLocalFile(target, "a.txt", "base");
+    GitCore::Push(clone, {"HEAD:refs/heads/main"});
+
+    Publish(remote.path, "remotediverge_publish", "theirs.txt", "theirs");
+
+    // A commit of its own makes the local branch diverge from the remote one.
+    CommitLocalFile(target, "ours.txt", "ours");
+
+    GitCore::Repository before = GitCore::Repository::Open(target.string());
+    EXPECT_FALSE(GitCore::Pull(before));
+
+    // The remote commit was fetched, but neither the branch nor the working
+    // tree was touched: merging is left to the user.
+    GitCore::Repository reopened = GitCore::Repository::Open(target.string());
+    EXPECT_EQ(GitCore::LookupCommit(reopened, "HEAD").summary, "ours");
+    EXPECT_EQ(GitCore::LookupCommit(reopened, "origin/main").summary, "theirs");
+    EXPECT_FALSE(std::filesystem::exists(target / "theirs.txt"));
+    RemoveTree(target);
+}
+
+TEST(RemoteTest, PullBootstrapsAnUnbornBranch)
+{
+    BareRemote remote("remoteunborn");
+    const auto target = TempPath("remoteunborn_target");
+    RemoveTree(target);
+
+    // A clone of an empty remote has a branch without any commit.
+    auto clone = GitCore::Clone(remote.path.string(), target.string());
+    UseMainBranch(target);
+    Publish(remote.path, "remoteunborn_publish", "a.txt", "published");
+
+    EXPECT_TRUE(GitCore::Pull(clone));
+
+    GitCore::Repository reopened = GitCore::Repository::Open(target.string());
+    EXPECT_EQ(GitCore::LookupCommit(reopened, "HEAD").summary, "published");
+    EXPECT_TRUE(std::filesystem::exists(target / "a.txt"));
+    RemoveTree(target);
+}
+
+TEST(RemoteTest, PullDoesNotFailOnAMissingRemoteBranch)
+{
+    BareRemote remote("remotemissing");
+    const auto target = TempPath("remotemissing_target");
+    RemoveTree(target);
+
+    auto clone = GitCore::Clone(remote.path.string(), target.string());
+    UseMainBranch(target);
+    CommitLocalFile(target, "a.txt", "local only");
+    // The remote gets the commit, but under a branch name nobody pulls.
+    GitCore::Push(clone, {"HEAD:refs/heads/trunk"});
+
+    GitCore::Repository repo = GitCore::Repository::Open(target.string());
+    EXPECT_TRUE(GitCore::Pull(repo));
+    EXPECT_EQ(GitCore::LookupCommit(repo, "HEAD").summary, "local only");
+    RemoveTree(target);
+}
+
+TEST(RemoteTest, PullUsesTheCredentialsProviderOfTheOptions)
+{
+    TestRepo source("remotepullcred");
+    source.Write("a.txt", "a\n");
+    source.Commit("first");
+
+    const auto target = TempPath("remotepullcred_target");
+    RemoveTree(target);
+    auto clone = GitCore::Clone(source.root.string(), target.string());
+
+    source.Write("b.txt", "b\n");
+    source.Commit("second");
+
+    // A local transport never asks, so the provider must not be consulted and
+    // the pull still has to succeed.
+    bool asked = false;
+    GitCore::RemoteOptions options;
+    options.credentials = [&](const GitCore::CredentialRequest&, GitCore::Credential&) {
+        asked = true;
+        return false;
+    };
+    EXPECT_TRUE(GitCore::Pull(clone, options));
+
+    EXPECT_FALSE(asked);
+    GitCore::Repository reopened = GitCore::Repository::Open(target.string());
+    EXPECT_EQ(GitCore::LookupCommit(reopened, "HEAD").summary, "second");
+    EXPECT_TRUE(std::filesystem::exists(target / "b.txt"));
+    RemoveTree(target);
+}
+
+// --- Push without refspecs ------------------------------------------------
+
+// An empty refspec list means "the checked out branch", like `git push origin`.
+TEST(RemoteTest, PushWithoutRefspecsUsesTheCurrentBranch)
+{
+    BareRemote remote("remotepushdefault");
+    const auto target = TempPath("remotepushdefault_target");
+    RemoveTree(target);
+
+    auto clone = GitCore::Clone(remote.path.string(), target.string());
+    UseMainBranch(target);
+    CommitLocalFile(target, "a.txt", "published branch");
+
+    GitCore::Repository repo = GitCore::Repository::Open(target.string());
+    GitCore::Push(repo, {});
+
+    GitCore::Repository pushed = GitCore::Repository::Open(remote.path.string());
+    const auto log = GitCore::GetLog(pushed, {}, 1);
+    ASSERT_EQ(log.size(), 1u);
+    EXPECT_EQ(log[0].summary, "published branch");
+    RemoveTree(target);
+}
+
+// Without a branch there is no name to push under, but an explicit refspec
+// still works.
+TEST(RemoteTest, PushWithoutRefspecsNeedsACheckedOutBranch)
+{
+    BareRemote remote("remotepushdetached");
+    const auto target = TempPath("remotepushdetached_target");
+    RemoveTree(target);
+
+    auto clone = GitCore::Clone(remote.path.string(), target.string());
+    UseMainBranch(target);
+    CommitLocalFile(target, "a.txt", "before detaching");
+    RunGit(target.string(), "checkout -q --detach HEAD");
+
+    GitCore::Repository repo = GitCore::Repository::Open(target.string());
+    EXPECT_THROW(GitCore::Push(repo, {}), GitCore::GitException);
+
+    GitCore::Push(repo, {"HEAD:refs/heads/detached"});
+    GitCore::Repository pushed = GitCore::Repository::Open(remote.path.string());
+    EXPECT_EQ(GitCore::LookupCommit(pushed, "refs/heads/detached").summary, "before detaching");
     RemoveTree(target);
 }

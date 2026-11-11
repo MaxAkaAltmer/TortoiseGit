@@ -24,6 +24,7 @@
 
 #include "GitCore/Branches.h"
 #include "GitCore/Clone.h"
+#include "GitCore/Commit.h"
 #include "GitCore/Credentials.h"
 #include "GitCore/Diff.h"
 #include "GitCore/GitException.h"
@@ -38,6 +39,9 @@ namespace
     constexpr int ExitGitError = 1;
     constexpr int ExitUsage = 2;
     constexpr int ExitNoRepo = 3;
+    // A pull found local commits the remote does not have; integrating them
+    // needs a merge or a rebase, which the command line does not attempt.
+    constexpr int ExitDiverged = 4;
 
     struct Options
     {
@@ -51,13 +55,16 @@ namespace
         bool bare = false;
         bool includeRemote = true;
         bool nameOnly = false;
-        // Remote access (clone, fetch, push)
+        // Committing
+        std::string message;
+        bool stageAll = false;
+        // Remote access (clone, fetch, push, pull)
         std::string remoteName = "origin";
         std::string userName;
         std::string password;
         std::string sshKey;
         std::string passphrase;
-        std::vector<std::string> positional; // refspecs for fetch/push
+        std::vector<std::string> positional; // refspecs (fetch/push), paths (add/unstage)
     };
 
     void PrintUsage()
@@ -78,9 +85,15 @@ namespace
             "  features                  Show the transports built into libgit2\n"
             "  fetch [refspec...]        Fetch from a remote\n"
             "  push [refspec...]         Push to a remote\n"
+            "  pull                      Fetch and fast-forward the current branch\n"
+            "  add [path...]             Stage changes (default: everything)\n"
+            "  unstage [path...]         Undo staging (default: everything)\n"
+            "  commit -m <message>       Record the staged changes\n"
             "\n"
             "Options:\n"
             "  -C, --chdir <path>        Run as if started in <path> (default: .)\n"
+            "  -m, --message <text>      Commit message (commit)\n"
+            "      --all                 Stage every change before committing\n"
             "      --json                Machine-readable JSON output\n"
             "  -n, --limit <N>           Limit results (log; 0 = unlimited)\n"
             "      --skip <N>            Skip first N commits (log)\n"
@@ -90,7 +103,7 @@ namespace
             "      --no-remote           Do not list remote branches (branches)\n"
             "      --bare                Create a bare repository (init)\n"
             "\n"
-            "Remote options (clone, fetch, push):\n"
+            "Remote options (clone, fetch, push, pull):\n"
             "      --remote <name>       Remote to use (default: origin)\n"
             "      --username <name>     User name for the remote\n"
             "      --password <secret>   Password or access token (https)\n"
@@ -307,6 +320,68 @@ namespace
         GitCore::Repository repo = GitCore::Repository::Open(opt.repoPath);
         GitCore::Push(repo, opt.positional, MakeRemoteOptions(opt));
         std::cout << "Pushed to '" << opt.remoteName << "'\n";
+        return ExitOk;
+    }
+
+    // Pull only fast-forwards; anything else is reported so that a script can
+    // tell "nothing to do" from "the user has to decide".
+    int CmdPull(const Options& opt)
+    {
+        GitCore::Repository repo = GitCore::Repository::Open(opt.repoPath);
+        if (!GitCore::Pull(repo, MakeRemoteOptions(opt)))
+        {
+            std::cerr << "error: the branch has diverged from '" << opt.remoteName
+                      << "', nothing was merged - run merge or rebase\n";
+            return ExitDiverged;
+        }
+        std::cout << "Pulled from '" << opt.remoteName << "'\n";
+        return ExitOk;
+    }
+
+    void PrintStagedSummary(const char* verb, const Options& opt)
+    {
+        if (opt.positional.empty())
+            std::cout << verb << " every change\n";
+        else
+            std::cout << verb << ' ' << opt.positional.size() << " path(s)\n";
+    }
+
+    int CmdAdd(const Options& opt)
+    {
+        GitCore::Repository repo = GitCore::Repository::Open(opt.repoPath);
+        GitCore::Stage(repo, opt.positional);
+        PrintStagedSummary("Staged", opt);
+        return ExitOk;
+    }
+
+    int CmdUnstage(const Options& opt)
+    {
+        GitCore::Repository repo = GitCore::Repository::Open(opt.repoPath);
+        GitCore::Unstage(repo, opt.positional);
+        PrintStagedSummary("Unstaged", opt);
+        return ExitOk;
+    }
+
+    int CmdCommit(const Options& opt)
+    {
+        if (opt.message.empty())
+        {
+            std::cerr << "error: commit requires -m <message>\n";
+            return ExitUsage;
+        }
+
+        GitCore::Repository repo = GitCore::Repository::Open(opt.repoPath);
+        if (opt.stageAll)
+            GitCore::Stage(repo);
+
+        const std::string id = GitCore::CreateCommit(repo, opt.message);
+        if (opt.json)
+        {
+            std::cout << nlohmann::json{{"id", id}}.dump(2) << '\n';
+            return ExitOk;
+        }
+
+        std::cout << "Created commit " << id << '\n';
         return ExitOk;
     }
 
@@ -600,6 +675,15 @@ namespace
                 opt.includeRemote = false;
             else if (arg == "--name-only")
                 opt.nameOnly = true;
+            else if (arg == "-m" || arg == "--message")
+            {
+                const char* v = nextValue(arg.c_str());
+                if (!v)
+                    return false;
+                opt.message = v;
+            }
+            else if (arg == "--all")
+                opt.stageAll = true;
             else if (arg == "-n" || arg == "--limit")
             {
                 const char* v = nextValue(arg.c_str());
@@ -668,6 +752,14 @@ int main(int argc, char* argv[])
             return CmdFetch(opt);
         if (opt.command == "push")
             return CmdPush(opt);
+        if (opt.command == "pull")
+            return CmdPull(opt);
+        if (opt.command == "add")
+            return CmdAdd(opt);
+        if (opt.command == "unstage")
+            return CmdUnstage(opt);
+        if (opt.command == "commit")
+            return CmdCommit(opt);
         if (opt.command == "trust")
             return CmdTrust(opt);
         if (opt.command == "status")
