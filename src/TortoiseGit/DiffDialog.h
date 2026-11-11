@@ -24,9 +24,9 @@
 
 #include "GitCore/Diff.h"
 
+class DiffViewerWidget;
 class QLineEdit;
 class QListWidget;
-class QPlainTextEdit;
 class QPushButton;
 
 namespace GitCore
@@ -64,6 +64,6 @@ private:
     QLineEdit* m_rev2Edit     = nullptr;
     QPushButton* m_reloadButton = nullptr;
     QListWidget* m_filesList  = nullptr;
-    QPlainTextEdit* m_patchView = nullptr;
+    DiffViewerWidget* m_patchView = nullptr;
     QFutureWatcher<std::vector<GitCore::FileDiff>> m_watcher;
 };

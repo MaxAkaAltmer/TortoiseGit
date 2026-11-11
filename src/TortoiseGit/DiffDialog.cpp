@@ -24,12 +24,12 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
-#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QtConcurrentRun>
 
+#include "DiffViewerWidget.h"
 #include "GitCore/GitException.h"
 
 namespace
@@ -61,10 +61,7 @@ DiffDialog::DiffDialog(const GitCore::Repository* repo,
     m_filesList = new QListWidget(this);
     m_filesList->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
 
-    m_patchView = new QPlainTextEdit(this);
-    m_patchView->setReadOnly(true);
-    m_patchView->setLineWrapMode(QPlainTextEdit::NoWrap);
-    m_patchView->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_patchView = new DiffViewerWidget(this);
 
     auto* splitter = new QSplitter(Qt::Horizontal, this);
     splitter->addWidget(m_filesList);
@@ -117,7 +114,7 @@ void DiffDialog::Reload()
     const std::string to = m_activeRev2.toStdString();
     m_reloadButton->setEnabled(false);
     m_filesList->clear();
-    m_patchView->clear();
+    m_patchView->Clear();
     m_watcher.setFuture(QtConcurrent::run(
         [repo, from, to] { return GitCore::GetChangedFiles(*repo, from, to, {}); }));
 }
@@ -153,7 +150,7 @@ void DiffDialog::OnLoadFinished()
     }
 
     if (files.empty())
-        m_patchView->setPlainText(tr("No changes."));
+        m_patchView->SetPatch(tr("No changes."));
 }
 
 void DiffDialog::OnFileSelected()
@@ -161,7 +158,7 @@ void DiffDialog::OnFileSelected()
     auto* item = m_filesList->currentItem();
     if (!item)
     {
-        m_patchView->clear();
+        m_patchView->Clear();
         return;
     }
 
@@ -176,14 +173,14 @@ void DiffDialog::OnFileSelected()
                                                            m_activeRev1.toStdString(),
                                                            m_activeRev2.toStdString(),
                                                            DiffPath(file).toStdString());
-        m_patchView->setPlainText(patch.empty()
-                                      ? tr("(no textual changes)")
-                                      : QString::fromUtf8(patch.data(),
-                                                          static_cast<qint64>(patch.size())));
+        m_patchView->SetPatch(patch.empty()
+                                  ? tr("(no textual changes)")
+                                  : QString::fromUtf8(patch.data(),
+                                                      static_cast<qint64>(patch.size())));
     }
     catch (const GitCore::GitException& e)
     {
-        m_patchView->setPlainText(QString::fromUtf8(e.what()));
+        m_patchView->SetPatch(QString::fromUtf8(e.what()));
     }
     QApplication::restoreOverrideCursor();
 }

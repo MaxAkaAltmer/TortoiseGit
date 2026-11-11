@@ -16,6 +16,7 @@ set(TGIT_SOURCES
     TortoiseGit/LogDialog.cpp
     TortoiseGit/StatusDialog.cpp
     TortoiseGit/DiffDialog.cpp
+    TortoiseGit/DiffViewerWidget.cpp
     TortoiseGit/AppSettings.cpp
     CrossPlatform/Path.cpp
     CrossPlatform/FileSystem.cpp
@@ -30,6 +31,7 @@ set(TGIT_HEADERS
     TortoiseGit/LogDialog.h
     TortoiseGit/StatusDialog.h
     TortoiseGit/DiffDialog.h
+    TortoiseGit/DiffViewerWidget.h
     TortoiseGit/AppSettings.h
     CrossPlatform/Path.h
     CrossPlatform/ConfigStore.h
@@ -58,6 +60,13 @@ endif()
 
 # Phase 3: the GUI dialogs use the cross-platform git layer
 target_link_libraries(tortoisegit PRIVATE gitcore)
+
+# Optional: render patches with Scintilla instead of the Qt widget
+include(DetectQScintilla)
+if(TARGET tgit::qscintilla)
+    target_link_libraries(tortoisegit PRIVATE tgit::qscintilla)
+    target_compile_definitions(tortoisegit PRIVATE TGIT_HAVE_SCINTILLA)
+endif()
 
 # Optional: forward the command line of further instances over D-Bus
 if(Qt6DBus_FOUND)
