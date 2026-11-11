@@ -13,9 +13,12 @@
 #include <windows.h>
 #endif
 
-// Logging levels matching Windows DebugOutput severity
-namespace CLogging
+// Cross-platform logging singleton
+// Note: LogLevel is nested in the class - callers use CLogging::LogLevel::Xxx
+class CLogging
 {
+public:
+    // Logging levels matching Windows DebugOutput severity
     enum class LogLevel
     {
         Debug = 0,
@@ -25,54 +28,49 @@ namespace CLogging
         Fatal = 4
     };
 
-    // Cross-platform logging singleton
-    class CLogging
-    {
-    public:
-        // Initialize logging (call once at startup)
-        static void Init(const std::string& appName = "TortoiseGit",
-                        const std::string& logDir = "");
+    // Initialize logging (call once at startup)
+    static void Init(const std::string& appName = "TortoiseGit",
+                    const std::string& logDir = "");
 
-        // Log a message
-        static void LogMessage(LogLevel level, const std::string& message);
-        static void LogFormat(LogLevel level, const char* fmt, ...);
+    // Log a message
+    static void LogMessage(LogLevel level, const std::string& message);
+    static void LogFormat(LogLevel level, const char* fmt, ...);
 
-        // Set/get minimum log level
-        static void SetMinLevel(LogLevel level);
-        static LogLevel GetMinLevel();
+    // Set/get minimum log level
+    static void SetMinLevel(LogLevel level);
+    static LogLevel GetMinLevel();
 
-        // Shutdown (optional)
-        static void Shutdown();
+    // Shutdown (optional)
+    static void Shutdown();
 
-        // Check if logging is initialized
-        static bool IsInitialized() { return s_initialized; }
+    // Check if logging is initialized
+    static bool IsInitialized() { return s_initialized; }
 
-        // Thread-safe log entry
-        static void LogEntry(LogLevel level, const std::string& message,
-                           const char* file = "", int line = 0,
-                           const char* func = "");
+    // Thread-safe log entry
+    static void LogEntry(LogLevel level, const std::string& message,
+                       const char* file = "", int line = 0,
+                       const char* func = "");
 
-        // Stream-based logging for complex output
-        static std::ostream& GetLogStream(LogLevel level);
+    // Stream-based logging for complex output
+    static std::ostream& GetLogStream(LogLevel level);
 
-    private:
-        static std::once_flag s_initFlag;
-        static std::mutex s_logMutex;
-        static std::string s_logFilePath;
-        static bool s_initialized;
-        static LogLevel s_minLevel;
-    };
+private:
+    static std::once_flag s_initFlag;
+    static std::mutex s_logMutex;
+    static std::string s_logFilePath;
+    static bool s_initialized;
+    static LogLevel s_minLevel;
+};
 
-    // Helper macro for convenient logging
-    #define LOG_DEBUG(msg)   CLogging::LogEntry(CLogging::LogLevel::Debug, msg, __FILE__, __LINE__, __FUNCTION__)
-    #define LOG_INFO(msg)    CLogging::LogEntry(CLogging::LogLevel::Info, msg, __FILE__, __LINE__, __FUNCTION__)
-    #define LOG_WARN(msg)    CLogging::LogEntry(CLogging::LogLevel::Warning, msg, __FILE__, __LINE__, __FUNCTION__)
-    #define LOG_ERROR(msg)   CLogging::LogEntry(CLogging::LogLevel::Error, msg, __FILE__, __LINE__, __FUNCTION__)
-    #define LOG_FATAL(msg)   CLogging::LogEntry(CLogging::LogLevel::Fatal, msg, __FILE__, __LINE__, __FUNCTION__)
+// Helper macro for convenient logging
+#define LOG_DEBUG(msg)   CLogging::LogEntry(CLogging::LogLevel::Debug, msg, __FILE__, __LINE__, __FUNCTION__)
+#define LOG_INFO(msg)    CLogging::LogEntry(CLogging::LogLevel::Info, msg, __FILE__, __LINE__, __FUNCTION__)
+#define LOG_WARN(msg)    CLogging::LogEntry(CLogging::LogLevel::Warning, msg, __FILE__, __LINE__, __FUNCTION__)
+#define LOG_ERROR(msg)   CLogging::LogEntry(CLogging::LogLevel::Error, msg, __FILE__, __LINE__, __FUNCTION__)
+#define LOG_FATAL(msg)   CLogging::LogEntry(CLogging::LogLevel::Fatal, msg, __FILE__, __LINE__, __FUNCTION__)
 
-    // Stream-style logging
-    #define LOG_STREAM(level) CLogging::GetLogStream(level)
-}
+// Stream-style logging
+#define LOG_STREAM(level) CLogging::GetLogStream(level)
 
 // Windows DEBUG equivalent
 #ifdef _WIN32

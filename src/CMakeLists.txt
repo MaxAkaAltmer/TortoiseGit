@@ -4,6 +4,9 @@ if(WIN32)
     set(WIN_LIBS shlwapi version)
 endif()
 
+# Run moc automatically for classes with Q_OBJECT
+set(CMAKE_AUTOMOC ON)
+
 # === TortoiseGit Main Application ===
 set(TGIT_SOURCES
     TortoiseGit/main.cpp
@@ -14,10 +17,10 @@ set(TGIT_SOURCES
     CrossPlatform/Path.cpp
     CrossPlatform/FileSystem.cpp
     CrossPlatform/Logging.cpp
+    CrossPlatform/ConfigStore.cpp
 )
 
 set(TGIT_HEADERS
-    TortoiseGit/main.h
     TortoiseGit/MainWindow.h
     TortoiseGit/SettingsDialog.h
     TortoiseGit/LogDialog.h
@@ -73,6 +76,31 @@ if(UNIX AND NOT APPLE)
         _LINUX_
         HAVE_CONFIG_H
     )
+endif()
+
+# === Phase 2: cross-platform Git layer (no Qt, no GUI) ===
+include(BuildLibgit2)
+
+add_library(gitcore STATIC
+    GitCore/GitException.cpp
+    GitCore/Repository.cpp
+    GitCore/Log.cpp
+    GitCore/Status.cpp
+    GitCore/Branches.cpp
+    GitCore/Diff.cpp
+    GitCore/Clone.cpp
+)
+target_include_directories(gitcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(gitcore PUBLIC tgit::libgit2)
+
+# === Phase 2: console utility ===
+add_executable(tgit-cli
+    tgit-cli/main.cpp
+)
+target_link_libraries(tgit-cli PRIVATE gitcore)
+# nlohmann/json for the --json output
+if(EXISTS "${CMAKE_SOURCE_DIR}/ext/json/include/nlohmann/json.hpp")
+    target_include_directories(tgit-cli PRIVATE "${CMAKE_SOURCE_DIR}/ext/json/include")
 endif()
 
 # === Build all external libraries ===

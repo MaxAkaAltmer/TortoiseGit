@@ -76,6 +76,9 @@ namespace CFileSystem
     using DirEntry = std::filesystem::directory_entry;
     using DirCallback = std::function<bool(const DirEntry& entry, int depth)>;
     bool EnumerateDirectory(const std::filesystem::path& dirPath, DirCallback callback, bool recursive = false);
+    // Returns regular files in dirPath whose name matches pattern.
+    // Pattern uses Win32 PathMatchSpec-style wildcards ('*' and '?'),
+    // ASCII case-insensitive; an empty pattern matches everything (L"*").
     std::vector<std::filesystem::path> GetFilesInDirectory(const std::filesystem::path& dirPath, const std::wstring& pattern = L"*");
     std::vector<std::filesystem::path> GetDirectoriesInDirectory(const std::filesystem::path& dirPath);
 

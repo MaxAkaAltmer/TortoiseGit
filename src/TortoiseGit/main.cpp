@@ -66,12 +66,13 @@ int main(int argc, char* argv[])
     parser.addVersionOption();
 
     parser.addOptions({
-        {{'s', 'action'}, "Action to perform (commit, log, diff, etc.)", "action"},
-        {{'p', 'path'}, "Target path", "path"},
-        {{'u', 'url'}, "URL (for clone/push/pull)", "url"},
-        {{'r', 'revision'}, "Revision/commit to work with", "revision"},
-        {{'d', 'debug'}, "Enable debug mode"},
-        {{'v', 'verbose'}, "Enable verbose output"},
+        {{"s", "action"}, "Action to perform (commit, log, diff, etc.)", "action"},
+        {{"p", "path"}, "Target path", "path"},
+        {{"u", "url"}, "URL (for clone/push/pull)", "url"},
+        {{"r", "revision"}, "Revision/commit to work with", "revision"},
+        {{"d", "debug"}, "Enable debug mode"},
+        // Note: no "v" shortcut - it is taken by the built-in --version option
+        {QStringList{"verbose"}, "Enable verbose output"},
     });
 
     parser.process(app);
@@ -82,7 +83,8 @@ int main(int argc, char* argv[])
 
     // Check single instance
     QSharedMemory sharedMem(APP_NAME);
-    if (!sharedMem.create(1, QSharedMemory::ShareExclusive))
+    // Qt6: the share-permissions parameter of create() was removed
+    if (!sharedMem.create(1))
     {
         if (sharedMem.error() == QSharedMemory::AlreadyExists)
         {

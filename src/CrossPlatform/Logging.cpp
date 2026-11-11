@@ -5,6 +5,11 @@
 #include <iomanip>
 #include <fstream>
 #include <mutex>
+#include <thread>
+#include <cstdarg>
+#include <filesystem>
+#include <cstdlib>
+#include <ctime>
 
 #ifdef _WIN32
 #include <windows.h>

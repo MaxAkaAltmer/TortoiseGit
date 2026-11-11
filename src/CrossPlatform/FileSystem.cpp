@@ -4,6 +4,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <chrono>
+#include <ctime>
+#include <cstdlib>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -11,11 +14,67 @@
 #else
 #include <unistd.h>
 #include <dirent.h>
+#include <pwd.h>
 #include <sys/inotify.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <glob.h>
 #endif
+
+namespace
+{
+    // std::filesystem::file_time_type::clock is not guaranteed to be
+    // system_clock (and does not provide to_time_t/from_time_t), so convert
+    // between the two clocks via their current offset.
+    std::time_t FileTimeToTimeT(const std::filesystem::file_time_type& ftime)
+    {
+        auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+            ftime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+        return std::chrono::system_clock::to_time_t(sctp);
+    }
+
+    std::filesystem::file_time_type TimeTToFileTime(std::time_t timestamp)
+    {
+        auto sctp = std::chrono::time_point<std::chrono::system_clock>(std::chrono::seconds(timestamp));
+        return std::chrono::time_point_cast<std::filesystem::file_time_type::duration>(
+            sctp - std::chrono::system_clock::now() + std::filesystem::file_time_type::clock::now());
+    }
+
+    // Wildcard match supporting '*' and '?', ASCII case-insensitive to keep
+    // the semantics of the Win32 PathMatchSpec() used before porting.
+    bool WildcardMatch(const std::string& text, const std::string& pattern)
+    {
+        auto lowerAscii = [](char c) {
+            return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+        };
+        size_t t = 0, p = 0;
+        size_t starPos = std::string::npos, starTextPos = 0;
+        while (t < text.size())
+        {
+            if (p < pattern.size() && (pattern[p] == '?' || lowerAscii(pattern[p]) == lowerAscii(text[t])))
+            {
+                ++t;
+                ++p;
+            }
+            else if (p < pattern.size() && pattern[p] == '*')
+            {
+                starPos = p++;
+                starTextPos = t;
+            }
+            else if (starPos != std::string::npos)
+            {
+                // backtrack: let the last '*' consume one more character
+                p = starPos + 1;
+                t = ++starTextPos;
+            }
+            else
+                return false;
+        }
+        while (p < pattern.size() && pattern[p] == '*')
+            ++p;
+        return p == pattern.size();
+    }
+}
 
 namespace CFileSystem
 {
@@ -190,14 +249,14 @@ namespace CFileSystem
         auto ftime = std::filesystem::last_write_time(path, ec);
         if (ec)
             return false;
-        timestamp = std::filesystem::clock::to_time_t(ftime);
+        timestamp = FileTimeToTimeT(ftime);
         return true;
     }
 
     bool SetFileTimestamp(const std::filesystem::path& path, std::time_t timestamp)
     {
         std::error_code ec;
-        auto ftime = std::filesystem::clock::from_time_t(timestamp);
+        auto ftime = TimeTToFileTime(timestamp);
         std::filesystem::last_write_time(path, ftime, ec);
         return !ec;
     }
@@ -225,9 +284,14 @@ namespace CFileSystem
         std::error_code ec;
         if (!std::filesystem::is_directory(dirPath, ec))
             return result;
+        // filesystem::path performs the platform-specific wstring -> UTF-8 conversion
+        const std::string utf8Pattern = pattern.empty() ? std::string("*")
+                                                        : std::filesystem::path(pattern).string();
         for (auto& entry : std::filesystem::directory_iterator(dirPath, ec))
         {
-            if (entry.is_regular_file())
+            if (!entry.is_regular_file())
+                continue;
+            if (WildcardMatch(entry.path().filename().string(), utf8Pattern))
                 result.push_back(entry.path());
         }
         return result;
@@ -348,11 +412,10 @@ namespace CFileSystem
         WideCharToMultiByte(CP_UTF8, 0, wtemp, -1, result, MAX_PATH, nullptr, nullptr);
         return result;
 #else
-        char* result = mkstemps(&template_[0], static_cast<int>(suffix.size()));
-        if (result)
+        int fd = mkstemps(&template_[0], static_cast<int>(suffix.size()));
+        if (fd != -1)
         {
-            close(fileno(fopen(template_.c_str(), "r")));
-            std::filesystem::remove(template_);
+            close(fd);
             return template_;
         }
         return tmpDir / (prefix + "1.tmp" + suffix);
@@ -480,7 +543,7 @@ namespace CFileSystem
                     if (entry.is_regular_file())
                     {
                         auto ts = std::filesystem::last_write_time(entry.path(), ec);
-                        currentState[entry.path()] = std::filesystem::clock::to_time_t(ts);
+                        currentState[entry.path()] = FileTimeToTimeT(ts);
                     }
                 }
             }

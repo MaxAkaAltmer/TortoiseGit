@@ -322,9 +322,12 @@ namespace CPath
         return CStringA(fullTemplate).GetString();
 #else
         std::string template_ = GetTempDirectory() + "/" + prefix + "XXXXXX" + suffix;
-        char* result = mkstemps(&template_[0], static_cast<int>(suffix.size()));
-        if (result)
+        int fd = mkstemps(&template_[0], static_cast<int>(suffix.size()));
+        if (fd != -1)
+        {
+            close(fd);
             return template_;
+        }
         return GetTempDirectory() + "/" + prefix + "1.tmp" + suffix;
 #endif
     }

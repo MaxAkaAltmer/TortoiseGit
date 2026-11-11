@@ -3,6 +3,7 @@
 #include <string>
 #include <filesystem>
 #include <utility>
+#include <algorithm>
 
 #ifdef _WIN32
 #include <windows.h>

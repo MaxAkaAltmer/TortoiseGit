@@ -215,8 +215,11 @@ namespace CConfig
 
     bool LinuxConfigStore::Has(const std::string& key) const
     {
-        auto& section = m_sections[m_currentSection];
-        return section.find(key) != section.end();
+        // operator[] is not available on const maps - use find() instead
+        auto sectionIt = m_sections.find(m_currentSection);
+        if (sectionIt == m_sections.end())
+            return false;
+        return sectionIt->second.find(key) != sectionIt->second.end();
     }
 
     void LinuxConfigStore::Remove(const std::string& key)
@@ -232,9 +235,12 @@ namespace CConfig
 
     std::vector<std::string> LinuxConfigStore::GetKeys() const
     {
-        auto& section = m_sections[m_currentSection];
+        // operator[] is not available on const maps - use find() instead
         std::vector<std::string> keys;
-        for (auto& [key, _] : section)
+        auto sectionIt = m_sections.find(m_currentSection);
+        if (sectionIt == m_sections.end())
+            return keys;
+        for (auto& [key, _] : sectionIt->second)
             keys.push_back(key);
         return keys;
     }
