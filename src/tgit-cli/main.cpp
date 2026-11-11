@@ -75,6 +75,7 @@ namespace
             "  diff <rev1> [rev2] [file] Show changes between revisions\n"
             "  trust <path>              Add a repository to safe.directory\n"
             "  remote                    List the configured remotes\n"
+            "  features                  Show the transports built into libgit2\n"
             "  fetch [refspec...]        Fetch from a remote\n"
             "  push [refspec...]         Push to a remote\n"
             "\n"
@@ -220,7 +221,14 @@ namespace
                 return true;
             }
             if (!request.allowsUsernamePassword || !InteractiveTerminal())
+            {
+                // libgit2 would report the rather cryptic "remote
+                // authentication required but no callback set" here.
+                std::cerr << "hint: '" << request.url
+                          << "' requires credentials, but this run has no terminal. Pass "
+                             "--username and --password (https) or --ssh-key (ssh).\n";
                 return false;
+            }
 
             std::string askedUser = userName;
             if (askedUser.empty() &&
@@ -299,6 +307,37 @@ namespace
         GitCore::Repository repo = GitCore::Repository::Open(opt.repoPath);
         GitCore::Push(repo, opt.positional, MakeRemoteOptions(opt));
         std::cout << "Pushed to '" << opt.remoteName << "'\n";
+        return ExitOk;
+    }
+
+    // Reports what the linked libgit2 can actually do, so a failing https or
+    // ssh remote can be told apart from a wrong credential.
+    int CmdFeatures(const Options& opt)
+    {
+        int major = 0;
+        int minor = 0;
+        int patch = 0;
+        git_libgit2_version(&major, &minor, &patch);
+
+        const bool https = GitCore::SupportsHttps();
+        const bool ssh   = GitCore::SupportsSsh();
+
+        if (opt.json)
+        {
+            nlohmann::json out = {
+                {"libgit2", std::to_string(major) + "." + std::to_string(minor) + "." + std::to_string(patch)},
+                {"https", https},
+                {"ssh", ssh}
+            };
+            std::cout << out.dump(2) << '\n';
+            return ExitOk;
+        }
+
+        std::cout << "libgit2 " << major << '.' << minor << '.' << patch << '\n'
+                  << "  https (OpenSSL): " << (https ? "yes" : "no - rebuild with TGIT_WITH_HTTPS=ON and libssl-dev")
+                  << '\n'
+                  << "  ssh:             " << (ssh ? "yes" : "no - rebuild with TGIT_WITH_SSH=LIBSSH2 or EXEC")
+                  << '\n';
         return ExitOk;
     }
 
@@ -623,6 +662,8 @@ int main(int argc, char* argv[])
             return CmdClone(opt);
         if (opt.command == "remote")
             return CmdRemote(opt);
+        if (opt.command == "features")
+            return CmdFeatures(opt);
         if (opt.command == "fetch")
             return CmdFetch(opt);
         if (opt.command == "push")

@@ -51,15 +51,32 @@ option(TGIT_WITH_HTTPS "Build the bundled libgit2 with HTTPS (OpenSSL) support" 
 set(TGIT_AUTH_ROOT "" CACHE PATH
     "Extra prefix containing the OpenSSL/libssh2 headers and libraries")
 
-set(_tgit_auth_hints "${TGIT_AUTH_ROOT};${TGIT_AUTH_ROOT}/usr")
-set(_tgit_auth_includes "include;usr/include;usr/include/${CMAKE_LIBRARY_ARCHITECTURE}")
-set(_tgit_auth_libraries
-    "lib;lib64;usr/lib;usr/lib64;usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
+# A staged prefix follows the Debian layout, so its multiarch library
+# directory has to become a prefix of its own: find_library only looks into
+# <prefix>/lib of a CMAKE_PREFIX_PATH entry, and find_package(OpenSSL) ignores
+# the HINTS given to it. CMAKE_PREFIX_PATH is inherited by the libgit2
+# subdirectory, which searches for the same packages again.
+if(TGIT_AUTH_ROOT)
+    list(APPEND CMAKE_PREFIX_PATH "${TGIT_AUTH_ROOT}" "${TGIT_AUTH_ROOT}/usr")
+    if(CMAKE_LIBRARY_ARCHITECTURE)
+        list(APPEND CMAKE_PREFIX_PATH
+            "${TGIT_AUTH_ROOT}/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}"
+            "${TGIT_AUTH_ROOT}/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
+    endif()
+    # OPENSSL_ROOT_DIR is deliberately not set: the module then searches only
+    # that one directory and misses the multiarch layout of the prefix.
+    # Debian keeps the generated opensslconf.h in an architecture specific
+    # include directory, which the found OPENSSL_INCLUDE_DIR does not cover.
+    if(CMAKE_LIBRARY_ARCHITECTURE AND
+       EXISTS "${TGIT_AUTH_ROOT}/usr/include/${CMAKE_LIBRARY_ARCHITECTURE}")
+        include_directories(SYSTEM
+            "${TGIT_AUTH_ROOT}/usr/include/${CMAKE_LIBRARY_ARCHITECTURE}")
+    endif()
+endif()
 
 set(_tgit_https OFF)
 if(TGIT_WITH_HTTPS)
-    find_package(OpenSSL QUIET HINTS ${_tgit_auth_hints}
-                 PATHS ${_tgit_auth_hints} PATH_SUFFIXES ${_tgit_auth_includes})
+    find_package(OpenSSL QUIET)
     if(OPENSSL_FOUND AND OPENSSL_SSL_LIBRARY AND OPENSSL_CRYPTO_LIBRARY)
         set(_tgit_https OpenSSL)
         message(STATUS "libgit2 HTTPS transport: OpenSSL ${OPENSSL_VERSION}")
@@ -76,10 +93,8 @@ set_property(CACHE TGIT_WITH_SSH PROPERTY STRINGS AUTO LIBSSH2 EXEC OFF)
 
 set(_tgit_ssh OFF)
 if(TGIT_WITH_SSH STREQUAL "AUTO" OR TGIT_WITH_SSH STREQUAL "LIBSSH2")
-    find_path(LIBSSH2_INCLUDE_DIR NAMES libssh2.h
-              HINTS ${_tgit_auth_hints} PATH_SUFFIXES ${_tgit_auth_includes})
-    find_library(LIBSSH2_LIBRARY NAMES libssh2 ssh2
-                 HINTS ${_tgit_auth_hints} PATH_SUFFIXES ${_tgit_auth_libraries})
+    find_path(LIBSSH2_INCLUDE_DIR NAMES libssh2.h)
+    find_library(LIBSSH2_LIBRARY NAMES libssh2 ssh2)
     if(LIBSSH2_INCLUDE_DIR AND LIBSSH2_LIBRARY)
         set(_tgit_ssh libssh2)
         message(STATUS "libgit2 SSH transport: libssh2 ${LIBSSH2_LIBRARY}")
