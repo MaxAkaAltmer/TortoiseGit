@@ -1,4 +1,8 @@
 # Cross-platform build configuration
+set(WIN_LIBS "")
+if(WIN32)
+    set(WIN_LIBS shlwapi version)
+endif()
 
 # === TortoiseGit Main Application ===
 set(TGIT_SOURCES
