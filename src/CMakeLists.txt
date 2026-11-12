@@ -17,6 +17,10 @@ set(TGIT_SOURCES
     TortoiseGit/StatusDialog.cpp
     TortoiseGit/DiffDialog.cpp
     TortoiseGit/DiffViewerWidget.cpp
+    TortoiseGit/CommitDialog.cpp
+    TortoiseGit/PushPullDialog.cpp
+    TortoiseGit/CredentialsDialog.cpp
+    TortoiseGit/GitStatusText.cpp
     TortoiseGit/AppSettings.cpp
     CrossPlatform/Path.cpp
     CrossPlatform/FileSystem.cpp
@@ -32,6 +36,10 @@ set(TGIT_HEADERS
     TortoiseGit/StatusDialog.h
     TortoiseGit/DiffDialog.h
     TortoiseGit/DiffViewerWidget.h
+    TortoiseGit/CommitDialog.h
+    TortoiseGit/PushPullDialog.h
+    TortoiseGit/CredentialsDialog.h
+    TortoiseGit/GitStatusText.h
     TortoiseGit/AppSettings.h
     CrossPlatform/Path.h
     CrossPlatform/ConfigStore.h

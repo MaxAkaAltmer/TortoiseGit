@@ -29,25 +29,7 @@
 #include <QtConcurrentRun>
 
 #include "GitCore/GitException.h"
-
-namespace
-{
-    QString DescribeStatus(char status)
-    {
-        switch (status)
-        {
-        case 'A': return QObject::tr("Added");
-        case 'M': return QObject::tr("Modified");
-        case 'D': return QObject::tr("Deleted");
-        case 'R': return QObject::tr("Renamed");
-        case 'C': return QObject::tr("Copied");
-        case 'T': return QObject::tr("Type change");
-        case '?': return QObject::tr("Untracked");
-        case 'X': return QObject::tr("Conflicted");
-        default:  return QObject::tr("Unchanged");
-        }
-    }
-}
+#include "GitStatusText.h"
 
 StatusDialog::StatusDialog(const GitCore::Repository* repo, QWidget* parent)
     : QDialog(parent)
@@ -135,8 +117,8 @@ void StatusDialog::OnLoadFinished()
     {
         auto* item = new QTreeWidgetItem(m_filesTree);
         item->setText(0, QString::fromStdString(file.path));
-        item->setText(1, DescribeStatus(file.indexStatus));
-        item->setText(2, DescribeStatus(file.worktreeStatus));
+        item->setText(1, GitStatusText::Describe(file.indexStatus));
+        item->setText(2, GitStatusText::Describe(file.worktreeStatus));
     }
 
     m_branchesTree->clear();

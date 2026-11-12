@@ -42,6 +42,10 @@ public:
     // The repository opened in this window, nullptr when none is open.
     const GitCore::Repository* Repo() const;
 
+    // The same repository for the dialogs that write to it (commit, push,
+    // pull); nullptr when none is open.
+    GitCore::Repository* MutableRepo();
+
     // Runs the dialog belonging to `action` ("log", "status", "diff", ...)
     // modally. Returns false for unknown actions - the caller then shows the
     // main window instead. Used for the `--action` command line mode.
@@ -58,6 +62,9 @@ private slots:
     void ShowLogDialog();
     void ShowStatusDialog();
     void ShowDiffDialog();
+    void ShowCommitDialog();
+    void ShowPushDialog();
+    void ShowPullDialog();
     void ShowSettingsDialog();
     void ShowAboutDialog();
 
@@ -74,4 +81,7 @@ private:
     QAction* m_logAction    = nullptr;
     QAction* m_statusAction = nullptr;
     QAction* m_diffAction   = nullptr;
+    QAction* m_commitAction = nullptr;
+    QAction* m_pushAction   = nullptr;
+    QAction* m_pullAction   = nullptr;
 };

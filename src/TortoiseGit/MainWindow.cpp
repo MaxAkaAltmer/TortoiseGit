@@ -32,10 +32,12 @@
 #include <memory>
 
 #include "AppSettings.h"
+#include "CommitDialog.h"
 #include "CrossPlatform/Logging.h"
 #include "DiffDialog.h"
 #include "GitCore/GitException.h"
 #include "LogDialog.h"
+#include "PushPullDialog.h"
 #include "SettingsDialog.h"
 #include "StatusDialog.h"
 
@@ -94,10 +96,26 @@ MainWindow::MainWindow(QWidget* parent)
     m_diffAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
     connect(m_diffAction, &QAction::triggered, this, &MainWindow::ShowDiffDialog);
 
+    m_commitAction = new QAction(tr("&Commit..."), this);
+    m_commitAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+M")));
+    connect(m_commitAction, &QAction::triggered, this, &MainWindow::ShowCommitDialog);
+
+    m_pushAction = new QAction(tr("&Push..."), this);
+    m_pushAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+P")));
+    connect(m_pushAction, &QAction::triggered, this, &MainWindow::ShowPushDialog);
+
+    m_pullAction = new QAction(tr("P&ull..."), this);
+    m_pullAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+P")));
+    connect(m_pullAction, &QAction::triggered, this, &MainWindow::ShowPullDialog);
+
     auto* gitMenu = menuBar()->addMenu(tr("&Git"));
     gitMenu->addAction(m_logAction);
     gitMenu->addAction(m_statusAction);
     gitMenu->addAction(m_diffAction);
+    gitMenu->addSeparator();
+    gitMenu->addAction(m_commitAction);
+    gitMenu->addAction(m_pushAction);
+    gitMenu->addAction(m_pullAction);
 
     auto* helpMenu = menuBar()->addMenu(tr("&Help"));
     helpMenu->addAction(tr("&About TortoiseGit"), this, &MainWindow::ShowAboutDialog);
@@ -108,6 +126,9 @@ MainWindow::MainWindow(QWidget* parent)
     toolbar->addAction(m_logAction);
     toolbar->addAction(m_statusAction);
     toolbar->addAction(m_diffAction);
+    toolbar->addAction(m_commitAction);
+    toolbar->addAction(m_pushAction);
+    toolbar->addAction(m_pullAction);
 
     UpdateUiForRepo();
 }
@@ -144,6 +165,11 @@ const GitCore::Repository* MainWindow::Repo() const
     return m_repo ? &*m_repo : nullptr;
 }
 
+GitCore::Repository* MainWindow::MutableRepo()
+{
+    return m_repo ? &*m_repo : nullptr;
+}
+
 void MainWindow::ChooseAndOpenRepository()
 {
     QString startDir = QString::fromStdString(AppSettings::DefaultRepoPath());
@@ -172,6 +198,21 @@ void MainWindow::ShowDiffDialog()
     ExecAction(QStringLiteral("diff"));
 }
 
+void MainWindow::ShowCommitDialog()
+{
+    ExecAction(QStringLiteral("commit"));
+}
+
+void MainWindow::ShowPushDialog()
+{
+    ExecAction(QStringLiteral("push"));
+}
+
+void MainWindow::ShowPullDialog()
+{
+    ExecAction(QStringLiteral("pull"));
+}
+
 QDialog* MainWindow::CreateActionDialog(const QString& action, const QString& revision)
 {
     if (!Repo())
@@ -187,6 +228,13 @@ QDialog* MainWindow::CreateActionDialog(const QString& action, const QString& re
         const QString rev1 = revision.isEmpty() ? QStringLiteral("HEAD") : revision;
         return new DiffDialog(Repo(), rev1, QString(), this);
     }
+    // These three write to the repository, so they get the mutable handle.
+    if (action == QLatin1String("commit"))
+        return new CommitDialog(MutableRepo(), this);
+    if (action == QLatin1String("push"))
+        return new PushPullDialog(MutableRepo(), PushPullDialog::Mode::Push, this);
+    if (action == QLatin1String("pull"))
+        return new PushPullDialog(MutableRepo(), PushPullDialog::Mode::Pull, this);
     return nullptr;
 }
 
@@ -243,19 +291,26 @@ void MainWindow::ShowAboutDialog()
     QMessageBox::about(this, tr("About TortoiseGit"),
                        tr("<b>TortoiseGit %1</b><br>"
                           "Linux GUI for Git (port of TortoiseGit on top of libgit2 and Qt).<br><br>"
-                          "This is an early development preview: the Log, Status and Diff "
-                          "dialogs are functional; commit, push/pull and shell integration "
-                          "are planned.")
+                          "This is an early development preview: the Log, Status, Diff, "
+                          "Commit and Push/Pull dialogs are functional; shell integration, "
+                          "blame and conflict resolution are planned.")
                            .arg(QApplication::applicationVersion()));
 }
 
 void MainWindow::UpdateUiForRepo()
 {
-    const bool hasRepo = Repo() != nullptr;
+    const bool hasRepo  = Repo() != nullptr;
+    // A bare repository has no working tree, so nothing can be staged there;
+    // pushing and pulling work regardless of the checkout.
+    const bool canWrite = hasRepo && !m_repo->Info().isBare;
+
     m_closeAction->setEnabled(hasRepo);
     m_logAction->setEnabled(hasRepo);
     m_statusAction->setEnabled(hasRepo);
     m_diffAction->setEnabled(hasRepo);
+    m_commitAction->setEnabled(canWrite);
+    m_pushAction->setEnabled(hasRepo);
+    m_pullAction->setEnabled(hasRepo);
 
     if (!hasRepo)
     {
@@ -285,8 +340,9 @@ void MainWindow::UpdateUiForRepo()
     m_hintLabel->setText(tr("<h3>%1</h3>"
                             "<p>%2</p>"
                             "<p>Branch: <b>%3</b>%4</p>"
-                            "<p>Use the <i>Git</i> menu to show the commit log, the working "
-                            "tree status or the current diff.</p>")
+                            "<p>Use the <i>Git</i> menu to commit, push or pull, or to show "
+                            "the commit log, the working tree status and the current "
+                            "diff.</p>")
                              .arg(repoName.toHtmlEscaped(),
                                   QDir::toNativeSeparators(workDir).toHtmlEscaped(),
                                   branch.toHtmlEscaped(),

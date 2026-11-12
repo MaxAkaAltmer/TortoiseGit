@@ -57,7 +57,7 @@ int main(int argc, char* argv[])
     parser.addVersionOption();
 
     parser.addOptions({
-        {{"s", "action"}, "Action to perform (commit, log, diff, etc.)", "action"},
+        {{"s", "action"}, "Action to perform (log, status, diff, commit, push, pull)", "action"},
         {{"p", "path"}, "Target path", "path"},
         {{"u", "url"}, "URL (for clone/push/pull)", "url"},
         {{"r", "revision"}, "Revision/commit to work with", "revision"},
