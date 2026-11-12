@@ -59,21 +59,26 @@ MainWindow::MainWindow(QWidget* parent)
     // Note: QAction* are created explicitly (instead of the convenience
     // overloads of QMenu::addAction with a shortcut) to stay compatible
     // with Qt 6.2, where those overloads do not exist yet.
+    //
+    // The shortcuts are spelled out rather than taken from QKeySequence::Open,
+    // ::Preferences and ::Quit: those standard keys come from the desktop
+    // theme and are empty on a plain X11 session or with the offscreen
+    // platform, which would leave these items without any shortcut at all.
     auto* openAction = new QAction(style()->standardIcon(QStyle::SP_DirOpenIcon),
                                    tr("&Open Repository..."), this);
-    openAction->setShortcut(QKeySequence::Open);
+    openAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+O")));
     connect(openAction, &QAction::triggered, this, &MainWindow::ChooseAndOpenRepository);
 
     m_closeAction = new QAction(tr("&Close Repository"), this);
     connect(m_closeAction, &QAction::triggered, this, &MainWindow::CloseRepository);
 
     auto* settingsAction = new QAction(tr("&Settings..."), this);
-    settingsAction->setShortcut(QKeySequence::Preferences);
+    settingsAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+,")));
     connect(settingsAction, &QAction::triggered, this, &MainWindow::ShowSettingsDialog);
 
     auto* exitAction = new QAction(style()->standardIcon(QStyle::SP_DialogCloseButton),
                                    tr("E&xit"), this);
-    exitAction->setShortcut(QKeySequence::Quit);
+    exitAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Q")));
     connect(exitAction, &QAction::triggered, this, &QWidget::close);
 
     auto* fileMenu = menuBar()->addMenu(tr("&File"));
